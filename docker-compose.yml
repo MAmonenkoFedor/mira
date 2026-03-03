@@ -1,0 +1,43 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:16
+    container_name: miravkus_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: miravkus
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  server:
+    build: ./server
+    container_name: miravkus_server
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/miravkus
+      CORS_ORIGIN: http://localhost:8080
+      JWT_SECRET: change_this_in_prod
+      ADMIN_EMAIL: admin@example.com
+      ADMIN_PASSWORD: changeme
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - uploads_data:/app/uploads
+  web:
+    build: .
+    container_name: miravkus_web
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "8080:80"
+volumes:
+  db_data:
+  uploads_data:
