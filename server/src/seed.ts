@@ -1,34 +1,62 @@
 import type { Pool } from "pg";
 
 export async function seedIfEmpty(pool: Pool) {
-  const { rows: catCount } = await pool.query(`select count(*)::int as c from categories`);
-  if (catCount[0]?.c === 0) {
-    await pool.query(
-      `insert into categories(id,name,emoji,color) values 
-      ('gift','Подарочные наборы','🎁','candy-pink'),
-      ('chocolate','Шоколад','🍫','candy-mint'),
-      ('truffles','Трюфели','🟤','candy-lavender'),
-      ('asian','Азиатские сладости','🍡','candy-blue'),
-      ('cookies','Печенье и вафли','🍪','candy-banana')`
-    );
-  }
+  await pool.query(
+    `insert into categories(id,name,emoji,color) values 
+    ('gift','Подарочные наборы','🎁','candy-pink'),
+    ('gift/asian','Подарочные наборы азиатских сладостей','🍡','candy-blue'),
+    ('gift/asian-mini','Подарочные наборы азиатских сладостей Мини-версии','🍡','candy-blue'),
+    ('gift/premium','Премиум наборы','⭐','candy-lavender'),
+    ('gift/truffle','Трюфель','🟤','candy-lavender'),
+    ('gift/office','Офисные наборы','💼','candy-mint'),
+    ('gift/office/refreshing','Освежающие конфеты','🍃','candy-mint'),
+    ('gift/office/lollipops','Леденцы','🍭','candy-banana'),
+    ('gift/office/chewy','Жевательные конфеты','🍬','candy-pink'),
+    ('gift/snack','Снековые наборы','🍿','candy-banana'),
+    ('assortment','Ассортимент','🛍️','candy-banana'),
+    ('assortment/lollipops','Леденцы','🍭','candy-banana'),
+    ('assortment/sour-lollipops','Кислые леденцы','🍋','candy-blue'),
+    ('assortment/chewy-candy','Жевательные конфеты','🍬','candy-pink'),
+    ('assortment/marmalade-jelly','Мармелад и желе','🍓','candy-lavender'),
+    ('assortment/marshmallow','Маршмеллоу','☁️','candy-mint'),
+    ('assortment/cookies-waffles','Печенье и вафли','🍪','candy-banana'),
+    ('assortment/snacks','Снеки','🥨','candy-banana'),
+    ('assortment/gum','Жевательная резинка','🫧','candy-blue'),
+    ('assortment/refreshing','Освежающие конфеты','🍃','candy-mint'),
+    ('assortment/unique','Уникальные сладости','✨','candy-lavender'),
+    ('packaging','Упаковка','🎀','candy-pink')
+    on conflict(id) do update set
+      name = excluded.name,
+      emoji = excluded.emoji,
+      color = excluded.color`
+  );
+
+  await pool.query(
+    `insert into packaging_options(id,name,price,active) values
+    ('standard','Стандартная',0,true),
+    ('gift_wrap','Подарочная упаковка',149,true)
+    on conflict(id) do update set
+      name = excluded.name,
+      price = excluded.price,
+      active = excluded.active`
+  );
 
   const { rows: prodCount } = await pool.query(`select count(*)::int as c from products`);
   if (prodCount[0]?.c === 0) {
     await pool.query(
       `insert into products(id,name,price,old_price,category,badge,description,image,popularity) values
-      (1,'Подарочный набор «Сказка»',1490,null,'gift','new','Волшебный набор из 20 конфет ручной работы в красивой подарочной коробке с лентой.','/images/gift-box.jpg',10),
-      (2,'Подарочный набор «Детский праздник»',2190,2590,'gift','sale','Большой набор сладостей для детского праздника: шоколад, мармелад, печенье и леденцы.','/images/gift-box.jpg',9),
-      (3,'Молочный шоколад «Мишка»',290,null,'chocolate',null,'Нежный молочный шоколад с весёлым мишкой на упаковке. 100г натурального какао.','/images/chocolate.jpg',8),
-      (4,'Шоколадные фигурки «Зоопарк»',450,null,'chocolate','new','Набор из 6 шоколадных фигурок животных из бельгийского молочного шоколада.','/images/chocolate.jpg',7),
-      (5,'Трюфели «Нежность»',590,null,'truffles',null,'Классические шоколадные трюфели с начинкой из сливочного ганаша. 9 штук.','/images/truffles.jpg',6),
-      (6,'Трюфели ассорти «Радуга»',790,990,'truffles','sale','Ассорти трюфелей: малина, фисташка, карамель, апельсин. 12 штук в коробке.','/images/truffles.jpg',8),
-      (7,'Моти манго-маракуйя',350,null,'asian',null,'Японские рисовые пирожные моти с начинкой из манго и маракуйи. 6 штук.','/images/mochi.jpg',7),
-      (8,'Kit-Kat матча',420,null,'asian','new','Оригинальные японские Kit-Kat со вкусом зелёного чая матча. Упаковка 12 мини-батончиков.','/images/mochi.jpg',9),
-      (9,'Печенье «Весёлые мордашки»',320,null,'cookies',null,'Сливочное печенье с глазурью в виде забавных мордашек. 10 штук в упаковке.','/images/cookies.jpg',6),
-      (10,'Вафельные трубочки «Хрум»',280,null,'cookies',null,'Хрустящие вафельные трубочки с кремовой начинкой. 8 штук.','/images/cookies.jpg',5),
-      (11,'Конфеты «Белочка»',380,450,'chocolate','sale','Классические шоколадные конфеты с ореховой начинкой. 200г.','/images/chocolate.jpg',8),
-      (12,'Подарочный набор «Сладкая радуга»',1790,null,'gift','new','Яркий набор: моти, трюфели, печенье и шоколадные фигурки в радужной коробке.','/images/gift-box.jpg',10)`
+      (1,'Подарочный набор «Сказка»',1490,null,'gift/premium','new','Волшебный набор из 20 конфет ручной работы в красивой подарочной коробке с лентой.','/images/gift-box.jpg',10),
+      (2,'Подарочный набор «Детский праздник»',2190,2590,'gift/premium','sale','Большой набор сладостей для детского праздника: шоколад, мармелад, печенье и леденцы.','/images/gift-box.jpg',9),
+      (3,'Молочный шоколад «Мишка»',290,null,'assortment/unique',null,'Нежный молочный шоколад с весёлым мишкой на упаковке. 100г натурального какао.','/images/chocolate.jpg',8),
+      (4,'Шоколадные фигурки «Зоопарк»',450,null,'assortment/unique','new','Набор из 6 шоколадных фигурок животных из бельгийского молочного шоколада.','/images/chocolate.jpg',7),
+      (5,'Трюфели «Нежность»',590,null,'assortment/unique',null,'Классические шоколадные трюфели с начинкой из сливочного ганаша. 9 штук.','/images/truffles.jpg',6),
+      (6,'Трюфели ассорти «Радуга»',790,990,'assortment/unique','sale','Ассорти трюфелей: малина, фисташка, карамель, апельсин. 12 штук в коробке.','/images/truffles.jpg',8),
+      (7,'Моти манго-маракуйя',350,null,'assortment/unique',null,'Японские рисовые пирожные моти с начинкой из манго и маракуйи. 6 штук.','/images/mochi.jpg',7),
+      (8,'Kit-Kat матча',420,null,'assortment/unique','new','Оригинальные японские Kit-Kat со вкусом зелёного чая матча. Упаковка 12 мини-батончиков.','/images/mochi.jpg',9),
+      (9,'Печенье «Весёлые мордашки»',320,null,'assortment/cookies-waffles',null,'Сливочное печенье с глазурью в виде забавных мордашек. 10 штук в упаковке.','/images/cookies.jpg',6),
+      (10,'Вафельные трубочки «Хрум»',280,null,'assortment/cookies-waffles',null,'Хрустящие вафельные трубочки с кремовой начинкой. 8 штук.','/images/cookies.jpg',5),
+      (11,'Конфеты «Белочка»',380,450,'assortment/unique','sale','Классические шоколадные конфеты с ореховой начинкой. 200г.','/images/chocolate.jpg',8),
+      (12,'Подарочный набор «Сладкая радуга»',1790,null,'gift/premium','new','Яркий набор: моти, трюфели, печенье и шоколадные фигурки в радужной коробке.','/images/gift-box.jpg',10)`
     );
   }
 

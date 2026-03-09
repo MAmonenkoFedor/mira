@@ -1,13 +1,13 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, Package, FileText, Tag, Upload, X, Percent, Image as ImageIcon, ArrowUp, ArrowDown, BadgeCheck, ClipboardList } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, Package, FileText, Tag, Gift, Upload, X, Percent, Image as ImageIcon, ArrowUp, ArrowDown, BadgeCheck, ClipboardList } from 'lucide-react';
 import { toast } from 'sonner';
 import { useStore, type Article, type Order } from '@/components/candy-store/useStore';
-import { resolveMediaUrl } from '@/lib/api';
+import { api, resolveMediaUrl } from '@/lib/api';
 import { badgeToneSoftClasses, badgeToneClasses } from '@/components/candy-store/data';
-import type { Product, Category, Promo, PromoScope, Badge, BadgeTone } from '@/components/candy-store/data';
+import type { Product, Category, Promo, PromoScope, Badge, BadgeTone, PackagingOption } from '@/components/candy-store/data';
 
-type Tab = 'products' | 'categories' | 'articles' | 'promos' | 'import' | 'hero' | 'badges' | 'orders' | 'footer';
+type Tab = 'products' | 'categories' | 'packaging' | 'articles' | 'promos' | 'import' | 'hero' | 'badges' | 'orders' | 'footer';
 
 const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader();
@@ -107,6 +107,7 @@ export default function Admin() {
   const tabs: { key: Tab; icon: typeof Package; label: string; count: number }[] = [
     { key: 'products', icon: Package, label: 'Товары', count: store.products.length },
     { key: 'categories', icon: Tag, label: 'Категории', count: store.categories.length },
+    { key: 'packaging', icon: Gift, label: 'Упаковка', count: store.packagingOptions.length },
     { key: 'badges', icon: BadgeCheck, label: 'Бейджи', count: store.badges.length },
     { key: 'articles', icon: FileText, label: 'Статьи', count: store.articles.length },
     { key: 'orders', icon: ClipboardList, label: 'Заказы', count: store.orders?.length || 0 },
@@ -116,76 +117,127 @@ export default function Admin() {
     { key: 'import', icon: Upload, label: 'Импорт', count: 0 },
   ];
 
+  const activeTab = tabs.find(t => t.key === tab) || tabs[0];
+
   return (
-    <div className="min-h-screen bg-muted/30 pb-12">
-      <header className="sticky top-0 z-40 bg-card/95 backdrop-blur-md border-b border-border shadow-sm">
-        <div className="container flex items-center justify-between h-14">
-          <div className="flex items-center gap-3">
-            <Link to="/" className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-primary transition-colors">
-              <ArrowLeft size={20} />
+    <div className="min-h-screen bg-muted/30">
+      <div className="flex min-h-screen">
+        <aside className="hidden md:flex md:flex-col w-64 shrink-0 sticky top-0 h-screen bg-card/95 backdrop-blur-md border-r border-border shadow-sm">
+          <div className="h-14 flex items-center gap-2 px-4 border-b border-border">
+            <Link to="/" className="p-2 -ml-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-primary transition-colors">
+              <ArrowLeft size={18} />
             </Link>
-            <h1 className="font-display text-lg font-bold text-foreground">🍬 Админ-панель</h1>
+            <div className="font-display font-bold text-foreground">🍬 Админ</div>
           </div>
-          <div className="flex items-center gap-3">
-            <button onClick={() => setPwdOpen(v => !v)}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
-              <Pencil size={14} /> Сменить пароль
-            </button>
-            <button onClick={() => { store.resetToDefaults(); toast.success('Данные сброшены'); }}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors">
-              <RotateCcw size={14} /> Сбросить
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <div className="container pt-4">
-        {pwdOpen && (
-          <div className="mb-4 p-4 border rounded-2xl bg-card">
-            <div className="text-sm font-medium mb-2">Смена пароля</div>
-            <div className="grid gap-2 sm:grid-cols-3">
-              <input type="password" placeholder="Текущий пароль" className="admin-input" value={currPwd} onChange={e => setCurrPwd(e.target.value)} />
-              <input type="password" placeholder="Новый пароль" className="admin-input" value={newPwd} onChange={e => setNewPwd(e.target.value)} />
-              <button
-                onClick={async () => {
-                  try {
-                    const { api } = await import('@/lib/api');
-                    await api.changePassword(currPwd, newPwd);
-                    setCurrPwd(''); setNewPwd(''); setPwdOpen(false);
-                    toast.success('Пароль обновлён');
-                  } catch {
-                    toast.error('Не удалось обновить пароль');
-                  }
-                }}
-                className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium">
-                Обновить
-              </button>
+          <nav className="flex-1 p-3 overflow-y-auto">
+            <div className="grid gap-1">
+              {tabs.map(t => (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
+                  className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-2xl text-sm font-medium transition-colors ${
+                    tab === t.key
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  }`}
+                >
+                  <span className="flex items-center gap-2 min-w-0">
+                    <t.icon size={16} />
+                    <span className="truncate">{t.label}</span>
+                  </span>
+                  <span className={`text-xs tabular-nums ${tab === t.key ? 'opacity-80' : 'text-muted-foreground'}`}>
+                    {t.count}
+                  </span>
+                </button>
+              ))}
             </div>
-          </div>
-        )}
-        <div className="flex gap-2 mb-6 overflow-x-auto">
-          {tabs.map(t => (
-            <button key={t.key} onClick={() => setTab(t.key)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-medium transition-all whitespace-nowrap ${
-                tab === t.key
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'bg-card text-muted-foreground hover:text-foreground border border-border'
-              }`}>
-              <t.icon size={16} /> {t.label}
-              <span className="ml-1 text-xs opacity-70">({t.count})</span>
-            </button>
-          ))}
-        </div>
+          </nav>
+        </aside>
 
-        {tab === 'products' && <ProductsTab store={store} />}
-        {tab === 'categories' && <CategoriesTab store={store} />}
-        {tab === 'badges' && <BadgesTab store={store} />}
-        {tab === 'articles' && <ArticlesTab store={store} />}
-        {tab === 'orders' && <OrdersTab store={store} />}
-        {tab === 'promos' && <PromosTab store={store} />}
-        {tab === 'import' && <ImportTab store={store} />}
-        {tab === 'hero' && <HeroTab store={store} />}
-        {tab === 'footer' && <FooterTab store={store} />}
+        <div className="flex-1 min-w-0 flex flex-col">
+          <header className="sticky top-0 z-40 bg-card/95 backdrop-blur-md border-b border-border shadow-sm">
+            <div className="flex items-center justify-between h-14 px-4 md:px-6">
+              <div className="flex items-center gap-3 min-w-0">
+                <Link to="/" className="md:hidden p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-primary transition-colors">
+                  <ArrowLeft size={20} />
+                </Link>
+                <div className="min-w-0">
+                  <div className="font-display text-base md:text-lg font-bold text-foreground truncate">
+                    {activeTab?.label || 'Админ-панель'}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setPwdOpen(v => !v)}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <Pencil size={14} /> Сменить пароль
+                </button>
+                <button
+                  onClick={() => { store.resetToDefaults(); toast.success('Данные сброшены'); }}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors"
+                >
+                  <RotateCcw size={14} /> Сбросить
+                </button>
+              </div>
+            </div>
+          </header>
+
+          <main className="flex-1 px-4 md:px-6 pt-4 pb-12">
+            <div className="max-w-6xl mx-auto">
+              {pwdOpen && (
+                <div className="mb-4 p-4 border rounded-2xl bg-card">
+                  <div className="text-sm font-medium mb-2">Смена пароля</div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <input type="password" placeholder="Текущий пароль" className="admin-input" value={currPwd} onChange={e => setCurrPwd(e.target.value)} />
+                    <input type="password" placeholder="Новый пароль" className="admin-input" value={newPwd} onChange={e => setNewPwd(e.target.value)} />
+                    <button
+                      onClick={async () => {
+                        try {
+                          await api.changePassword(currPwd, newPwd);
+                          setCurrPwd(''); setNewPwd(''); setPwdOpen(false);
+                          toast.success('Пароль обновлён');
+                        } catch {
+                          toast.error('Не удалось обновить пароль');
+                        }
+                      }}
+                      className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium"
+                    >
+                      Обновить
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="md:hidden flex gap-2 mb-6 overflow-x-auto">
+                {tabs.map(t => (
+                  <button key={t.key} onClick={() => setTab(t.key)}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-medium transition-all whitespace-nowrap ${
+                      tab === t.key
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'bg-card text-muted-foreground hover:text-foreground border border-border'
+                    }`}
+                  >
+                    <t.icon size={16} /> {t.label}
+                    <span className="ml-1 text-xs opacity-70">({t.count})</span>
+                  </button>
+                ))}
+              </div>
+
+              {tab === 'products' && <ProductsTab store={store} />}
+              {tab === 'categories' && <CategoriesTab store={store} />}
+              {tab === 'packaging' && <PackagingTab store={store} />}
+              {tab === 'badges' && <BadgesTab store={store} />}
+              {tab === 'articles' && <ArticlesTab store={store} />}
+              {tab === 'orders' && <OrdersTab store={store} />}
+              {tab === 'promos' && <PromosTab store={store} />}
+              {tab === 'import' && <ImportTab store={store} />}
+              {tab === 'hero' && <HeroTab store={store} />}
+              {tab === 'footer' && <FooterTab store={store} />}
+            </div>
+          </main>
+        </div>
       </div>
     </div>
   );
@@ -208,10 +260,17 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
           product={editing}
           categories={store.categories}
           badges={store.badges}
-          onSave={(data) => {
-            if (editing) { store.updateProduct(editing.id, data); toast.success('Товар обновлён'); }
-            else { store.addProduct(data as Omit<Product, 'id'>); toast.success('Товар добавлен'); }
-            setEditing(null); setCreating(false);
+          packagingOptions={store.packagingOptions}
+          onSave={async (data) => {
+            try {
+              if (editing) { await store.updateProduct(editing.id, data); toast.success('Товар обновлён'); }
+              else { await store.addProduct(data as Omit<Product, 'id'>); toast.success('Товар добавлен'); }
+              setEditing(null); setCreating(false);
+            } catch (err) {
+              const code = err instanceof Error ? err.message : '';
+              if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+              else toast.error('Не удалось сохранить товар');
+            }
           }}
           onCancel={() => { setEditing(null); setCreating(false); }}
         />
@@ -235,7 +294,15 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
                 })()}
               </div>
               <div className="text-xs text-muted-foreground">
-                {p.price} ₽ · {store.categories.find(c => c.id === p.category)?.name || p.category}
+                {(() => {
+                  const anyP = p as any;
+                  const list: string[] = Array.isArray(anyP?.categories) && anyP.categories.length
+                    ? anyP.categories.filter(Boolean).map((x: unknown) => String(x))
+                    : (anyP?.category ? [String(anyP.category)] : []);
+                  const primary = list[0] ?? '';
+                  const label = primary ? (store.categories.find(c => c.id === primary)?.name || primary) : '—';
+                  return `${p.price} ₽ · ${label}`;
+                })()}
               </div>
             </div>
             <div className="flex gap-1.5">
@@ -243,7 +310,16 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
                 className="p-2 rounded-xl hover:bg-muted text-muted-foreground hover:text-primary transition-colors">
                 <Pencil size={15} />
               </button>
-              <button onClick={() => { store.deleteProduct(p.id); toast.success('Удалено'); }}
+              <button onClick={async () => {
+                try {
+                  await store.deleteProduct(p.id);
+                  toast.success('Удалено');
+                } catch (err) {
+                  const code = err instanceof Error ? err.message : '';
+                  if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                  else toast.error('Не удалось удалить товар');
+                }
+              }}
                 className="p-2 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
                 <Trash2 size={15} />
               </button>
@@ -267,7 +343,6 @@ function HeroTab({ store }: { store: ReturnType<typeof useStore> }) {
     if (!file && !finalUrl) { toast.error('Добавьте файл или URL'); return; }
     try {
       setBusy(true);
-      const { api } = await import('@/lib/api');
       if (file || finalUrl.startsWith('data:image/')) {
         const dataUrl = file ? await readFileAsDataUrl(file) : finalUrl;
         const webpUrl = await toWebpDataUrl(dataUrl);
@@ -371,16 +446,51 @@ function HeroTab({ store }: { store: ReturnType<typeof useStore> }) {
               <div className="text-xs text-muted-foreground truncate">{img.url}</div>
             </div>
             <label className="flex items-center gap-2 text-xs">
-              <input type="checkbox" checked={img.active} onChange={e => store.updateHeroImage(img.id, { active: e.target.checked })} />
+              <input
+                type="checkbox"
+                checked={img.active}
+                onChange={async (e) => {
+                  try {
+                    await store.updateHeroImage(img.id, { active: e.target.checked });
+                  } catch (err) {
+                    const code = err instanceof Error ? err.message : '';
+                    if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                    else toast.error('Не удалось обновить баннер');
+                  }
+                }}
+              />
               Активно
             </label>
             <div className="flex gap-1.5">
-              <button onClick={() => {
-                const newPos = Math.max(0, img.position - 1);
-                store.updateHeroImage(img.id, { position: newPos });
+              <button onClick={async () => {
+                try {
+                  const newPos = Math.max(0, img.position - 1);
+                  await store.updateHeroImage(img.id, { position: newPos });
+                } catch (err) {
+                  const code = err instanceof Error ? err.message : '';
+                  if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                  else toast.error('Не удалось обновить баннер');
+                }
               }} className="p-2 rounded-xl hover:bg-muted text-muted-foreground"><ArrowUp size={15} /></button>
-              <button onClick={() => store.updateHeroImage(img.id, { position: img.position + 1 })} className="p-2 rounded-xl hover:bg-muted text-muted-foreground"><ArrowDown size={15} /></button>
-              <button onClick={() => { store.deleteHeroImage(img.id); toast.success('Удалено'); }} className="p-2 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={15} /></button>
+              <button onClick={async () => {
+                try {
+                  await store.updateHeroImage(img.id, { position: img.position + 1 });
+                } catch (err) {
+                  const code = err instanceof Error ? err.message : '';
+                  if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                  else toast.error('Не удалось обновить баннер');
+                }
+              }} className="p-2 rounded-xl hover:bg-muted text-muted-foreground"><ArrowDown size={15} /></button>
+              <button onClick={async () => {
+                try {
+                  await store.deleteHeroImage(img.id);
+                  toast.success('Удалено');
+                } catch (err) {
+                  const code = err instanceof Error ? err.message : '';
+                  if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                  else toast.error('Не удалось удалить баннер');
+                }
+              }} className="p-2 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={15} /></button>
             </div>
           </div>
         ))}
@@ -411,8 +521,10 @@ function ImportTab({ store }: { store: ReturnType<typeof useStore> }) {
         await store.addCategory({ id, name: c.name, emoji: c.emoji || '🍬', color: c.color || 'candy-pink' } as any);
       }
       toast.success('Категории импортированы');
-    } catch {
-      toast.error('Ошибка импорта категорий: ожидается JSON массив');
+    } catch (err) {
+      const code = err instanceof Error ? err.message : '';
+      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+      else toast.error('Ошибка импорта категорий: ожидается JSON массив');
     }
   };
   const importProducts = async () => {
@@ -421,11 +533,16 @@ function ImportTab({ store }: { store: ReturnType<typeof useStore> }) {
       if (!Array.isArray(arr)) throw new Error();
       for (const p of arr) {
         if (!p.name || !p.price) continue;
+        const cats = Array.isArray(p.categories) && p.categories.length
+          ? p.categories.map((x: unknown) => String(x)).filter(Boolean)
+          : [String(p.category || '')].filter(Boolean);
+        if (!cats.length) continue;
         await store.addProduct({
           name: String(p.name).trim(),
           price: Number(p.price),
           oldPrice: p.oldPrice ? Number(p.oldPrice) : undefined,
-          category: String(p.category || ''),
+          categories: cats,
+          category: cats[0],
           badge: p.badge === 'new' || p.badge === 'sale' ? p.badge : undefined,
           description: String(p.description || ''),
           image: String(p.image || ''),
@@ -434,8 +551,10 @@ function ImportTab({ store }: { store: ReturnType<typeof useStore> }) {
         } as any);
       }
       toast.success('Товары импортированы');
-    } catch {
-      toast.error('Ошибка импорта товаров: ожидается JSON массив');
+    } catch (err) {
+      const code = err instanceof Error ? err.message : '';
+      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+      else toast.error('Ошибка импорта товаров: ожидается JSON массив');
     }
   };
   return (
@@ -481,34 +600,102 @@ function ImportTab({ store }: { store: ReturnType<typeof useStore> }) {
   );
 }
 /* ─── Product Form ─── */
-function ProductForm({ product, categories: cats, badges, onSave, onCancel }: {
+type ProductFormState = {
+  name: string;
+  price: number;
+  oldPrice: number;
+  categories: string[];
+  badge: string;
+  description: string;
+  sku: string;
+  compositionShort: string;
+  shelfLife: string;
+  country: string;
+  compositionSet: string;
+  storageTemperature: string;
+  productFeatures: string;
+  setWeight: string;
+  packageDimensions: string;
+  descriptionLong: string;
+  image: string;
+  images: string[];
+  popularity: number;
+  active: boolean;
+  packagingMode: 'none' | 'standard' | 'selectable';
+  standardPackagingId: string;
+};
+
+function ProductForm({ product, categories: cats, badges, packagingOptions, onSave, onCancel }: {
   product: Product | null;
   categories: Category[];
   badges: Badge[];
+  packagingOptions: PackagingOption[];
   onSave: (data: Partial<Product>) => void;
   onCancel: () => void;
 }) {
-  const [form, setForm] = useState({
+  const defaultStandardPackagingId = useMemo(() => {
+    return (
+      packagingOptions.find(p => p.active && p.id === 'standard')?.id ||
+      packagingOptions.find(p => p.active)?.id ||
+      packagingOptions[0]?.id ||
+      ''
+    );
+  }, [packagingOptions]);
+  const [form, setForm] = useState<ProductFormState>({
     name: product?.name || '',
     price: product?.price || 0,
     oldPrice: product?.oldPrice || 0,
-    category: product?.category || cats[0]?.id || '',
+    categories: (
+      (product as any)?.categories?.length
+        ? (product as any).categories
+        : (product as any)?.category
+          ? [(product as any).category]
+          : (cats[0]?.id ? [cats[0].id] : [])
+    ) as string[],
     badge: product?.badge || '',
     description: product?.description || '',
+    sku: product?.sku || '',
+    compositionShort: product?.compositionShort || '',
+    shelfLife: product?.shelfLife || '',
+    country: product?.country || '',
+    compositionSet: product?.compositionSet || '',
+    storageTemperature: product?.storageTemperature || '',
+    productFeatures: product?.productFeatures || '',
+    setWeight: product?.setWeight || '',
+    packageDimensions: product?.packageDimensions || '',
+    descriptionLong: product?.descriptionLong || '',
     image: product?.image || '/images/gift-box.jpg',
     images: product?.images || (product?.image ? [product.image] : [] as string[]),
     popularity: product?.popularity || 5,
     active: product?.active !== false,
+    packagingMode: product?.packagingMode || 'none',
+    standardPackagingId: product?.standardPackagingId || '',
   });
-  const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }));
+  const set = <K extends keyof ProductFormState>(k: K, v: ProductFormState[K]) => setForm(f => ({ ...f, [k]: v }));
+
+  useEffect(() => {
+    if (form.packagingMode !== 'standard') return;
+    if (form.standardPackagingId) return;
+    if (!defaultStandardPackagingId) return;
+    set('standardPackagingId', defaultStandardPackagingId);
+  }, [form.packagingMode, form.standardPackagingId, defaultStandardPackagingId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) { toast.error('Введите название'); return; }
     if (form.price <= 0) { toast.error('Введите цену'); return; }
+    const categories = (Array.isArray(form.categories) ? form.categories : []).map(String).filter(Boolean);
+    if (!categories.length) { toast.error('Выберите хотя бы одну категорию'); return; }
+    let standardPackagingId = form.standardPackagingId;
+    if (form.packagingMode === 'standard' && !standardPackagingId) {
+      standardPackagingId = defaultStandardPackagingId;
+      if (!standardPackagingId) {
+        toast.error('Выберите стандартную упаковку');
+        return;
+      }
+    }
     let images: string[] = [];
     try {
-      const { api } = await import('@/lib/api');
       for (const u of form.images) {
         if (u.startsWith('data:image/')) {
           const webpUrl = await toWebpDataUrl(u);
@@ -523,10 +710,24 @@ function ProductForm({ product, categories: cats, badges, onSave, onCancel }: {
     }
     onSave({
       name: form.name.trim(), price: form.price,
-      oldPrice: form.oldPrice || undefined, category: form.category,
+      oldPrice: form.oldPrice || undefined,
+      categories,
+      category: categories[0],
       badge: (form.badge as Product['badge']) || undefined,
       description: form.description.trim(), image: images[0] || form.image, images,
+      sku: form.sku.trim() || undefined,
+      compositionShort: form.compositionShort.trim() || undefined,
+      shelfLife: form.shelfLife.trim() || undefined,
+      country: form.country.trim() || undefined,
+      compositionSet: form.compositionSet.trim() || undefined,
+      storageTemperature: form.storageTemperature.trim() || undefined,
+      productFeatures: form.productFeatures.trim() || undefined,
+      setWeight: form.setWeight.trim() || undefined,
+      packageDimensions: form.packageDimensions.trim() || undefined,
+      descriptionLong: form.descriptionLong.trim() || undefined,
       popularity: form.popularity, active: Boolean(form.active),
+      packagingMode: form.packagingMode,
+      standardPackagingId: form.packagingMode === 'standard' ? (standardPackagingId || null) : null,
     });
   };
 
@@ -545,8 +746,14 @@ function ProductForm({ product, categories: cats, badges, onSave, onCancel }: {
         <input type="number" value={form.oldPrice} onChange={e => set('oldPrice', +e.target.value)} className="admin-input" min={0} />
       </div>
       <div>
-        <label className="text-xs font-medium text-muted-foreground mb-1 block">Категория</label>
-        <select value={form.category} onChange={e => set('category', e.target.value)} className="admin-input">
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Категории</label>
+        <select
+          multiple
+          value={form.categories}
+          onChange={e => set('categories', Array.from(e.target.selectedOptions).map(o => o.value))}
+          className="admin-input"
+          size={6}
+        >
           {cats.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
         </select>
       </div>
@@ -562,6 +769,40 @@ function ProductForm({ product, categories: cats, badges, onSave, onCancel }: {
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Популярность (1-10)</label>
         <input type="number" value={form.popularity} onChange={e => set('popularity', +e.target.value)} className="admin-input" min={1} max={10} />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Упаковка</label>
+        <select
+          value={form.packagingMode}
+          onChange={(e) => {
+            const next = e.target.value as ProductFormState['packagingMode'];
+            setForm(prev => {
+              const nextStandard = next === 'standard' ? (prev.standardPackagingId || defaultStandardPackagingId) : '';
+              return { ...prev, packagingMode: next, standardPackagingId: nextStandard };
+            });
+          }}
+          className="admin-input"
+        >
+          <option value="none">Без упаковки</option>
+          <option value="standard">Стандартная</option>
+          <option value="selectable">На выбор</option>
+        </select>
+      </div>
+      <div>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Стандартная упаковка</label>
+        <select
+          value={form.standardPackagingId}
+          onChange={e => set('standardPackagingId', e.target.value)}
+          className="admin-input"
+          disabled={form.packagingMode !== 'standard'}
+        >
+          <option value="">Не выбрано</option>
+          {packagingOptions.map(p => (
+            <option key={p.id} value={p.id}>
+              {p.name} · {p.price} ₽{p.active ? '' : ' (выключена)'}
+            </option>
+          ))}
+        </select>
       </div>
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Статус товара</label>
@@ -597,12 +838,202 @@ function ProductForm({ product, categories: cats, badges, onSave, onCancel }: {
         <textarea value={form.description} onChange={e => set('description', e.target.value)} maxLength={500}
           rows={2} className="admin-input resize-none" placeholder="Краткое описание товара" />
       </div>
+      <div>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Артикул</label>
+        <input value={form.sku} onChange={e => set('sku', e.target.value)} maxLength={50} className="admin-input" placeholder="SKU / артикул" />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Страна изготовления</label>
+        <input value={form.country} onChange={e => set('country', e.target.value)} maxLength={60} className="admin-input" placeholder="Япония" />
+      </div>
+      <div className="sm:col-span-2">
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Состав (кратко)</label>
+        <input value={form.compositionShort} onChange={e => set('compositionShort', e.target.value)} maxLength={200} className="admin-input" placeholder="Краткая строка состава" />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Срок годности</label>
+        <input value={form.shelfLife} onChange={e => set('shelfLife', e.target.value)} maxLength={80} className="admin-input" placeholder="365 дней" />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Температура хранения</label>
+        <input value={form.storageTemperature} onChange={e => set('storageTemperature', e.target.value)} maxLength={120} className="admin-input" placeholder="0…25°C" />
+      </div>
+      <div className="sm:col-span-2">
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Особенности продукции</label>
+        <input value={form.productFeatures} onChange={e => set('productFeatures', e.target.value)} maxLength={200} className="admin-input" placeholder="Без ГМО; без консервантов" />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Вес набора</label>
+        <input value={form.setWeight} onChange={e => set('setWeight', e.target.value)} maxLength={80} className="admin-input" placeholder="1030 г" />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Габариты упаковки</label>
+        <input value={form.packageDimensions} onChange={e => set('packageDimensions', e.target.value)} maxLength={120} className="admin-input" placeholder="30×20×10 см" />
+      </div>
+      <div className="sm:col-span-2">
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Состав набора</label>
+        <textarea value={form.compositionSet} onChange={e => set('compositionSet', e.target.value)} maxLength={2000}
+          rows={3} className="admin-input resize-y" placeholder="Подробный состав набора" />
+      </div>
+      <div className="sm:col-span-2">
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Описание (подробное)</label>
+        <textarea value={form.descriptionLong} onChange={e => set('descriptionLong', e.target.value)} maxLength={4000}
+          rows={4} className="admin-input resize-y" placeholder="Текст для окна «Характеристики и описание»" />
+      </div>
       <div className="sm:col-span-2 flex gap-2 justify-end">
         <button type="button" onClick={onCancel}
           className="px-4 py-2 rounded-xl text-sm border border-border text-muted-foreground hover:bg-muted transition-colors">Отмена</button>
         <button type="submit"
           className="px-4 py-2 rounded-xl text-sm bg-primary text-primary-foreground font-medium hover:scale-[1.02] active:scale-95 transition-transform">
           {product ? 'Сохранить' : 'Добавить'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/* ─── Packaging Tab ─── */
+function PackagingTab({ store }: { store: ReturnType<typeof useStore> }) {
+  const [editing, setEditing] = useState<PackagingOption | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  return (
+    <div>
+      <button onClick={() => { setCreating(true); setEditing(null); }}
+        className="mb-4 flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-primary text-primary-foreground text-sm font-medium hover:scale-[1.02] active:scale-95 transition-transform">
+        <Plus size={16} /> Добавить упаковку
+      </button>
+
+      {(creating || editing) && (
+        <PackagingForm
+          option={editing}
+          onSave={async (data) => {
+            try {
+              if (editing) {
+                await store.updatePackagingOption(editing.id, data);
+                toast.success('Упаковка обновлена');
+              } else {
+                if (!data.id) { toast.error('Введите ID'); return; }
+                if (store.packagingOptions.some(p => p.id === data.id)) { toast.error('ID уже используется'); return; }
+                await store.addPackagingOption({ id: data.id, name: data.name!, price: data.price!, active: data.active ?? true });
+                toast.success('Упаковка добавлена');
+              }
+              setEditing(null); setCreating(false);
+            } catch (err) {
+              const code = err instanceof Error ? err.message : '';
+              if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+              else toast.error('Не удалось сохранить упаковку');
+            }
+          }}
+          onCancel={() => { setEditing(null); setCreating(false); }}
+        />
+      )}
+
+      <div className="grid gap-3">
+        {store.packagingOptions.map(p => (
+          <div key={p.id} className="flex items-center gap-4 bg-card rounded-2xl p-4 border border-border/40 shadow-sm">
+            <span className="text-2xl w-10 h-10 rounded-xl flex items-center justify-center bg-muted">🎀</span>
+            <div className="flex-1 min-w-0">
+              <div className="font-display font-semibold text-sm">{p.name}</div>
+              <div className="text-xs text-muted-foreground">id: {p.id} · {p.price} ₽</div>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={p.active}
+                onChange={async (e) => {
+                  try {
+                    await store.updatePackagingOption(p.id, { active: e.target.checked });
+                  } catch (err) {
+                    const code = err instanceof Error ? err.message : '';
+                    if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                    else toast.error('Не удалось обновить упаковку');
+                  }
+                }}
+              />
+              Активна
+            </label>
+            <div className="flex gap-1.5">
+              <button onClick={() => { setEditing(p); setCreating(false); }}
+                className="p-2 rounded-xl hover:bg-muted text-muted-foreground hover:text-primary transition-colors">
+                <Pencil size={15} />
+              </button>
+              <button onClick={async () => {
+                try {
+                  await store.deletePackagingOption(p.id);
+                  toast.success('Удалено');
+                } catch (err) {
+                  const code = err instanceof Error ? err.message : '';
+                  if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                  else toast.error('Не удалось удалить упаковку');
+                }
+              }}
+                className="p-2 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
+                <Trash2 size={15} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PackagingForm({ option, onSave, onCancel }: {
+  option: PackagingOption | null;
+  onSave: (data: Partial<PackagingOption> & { id?: string }) => void;
+  onCancel: () => void;
+}) {
+  const [form, setForm] = useState({
+    id: option?.id || '',
+    name: option?.name || '',
+    price: option?.price || 0,
+    active: option?.active ?? true,
+  });
+  const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }));
+  const isNew = !option;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim()) { toast.error('Введите название'); return; }
+    if (isNew && !form.id.trim()) { toast.error('Введите ID'); return; }
+    if (form.price < 0) { toast.error('Цена не может быть отрицательной'); return; }
+    onSave({
+      ...(isNew ? { id: form.id.trim().toLowerCase().replace(/\s+/g, '_') } : {}),
+      name: form.name.trim(),
+      price: Math.round(Number(form.price) || 0),
+      active: Boolean(form.active),
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-card rounded-2xl p-5 border border-border/40 shadow-sm mb-6 grid gap-4 sm:grid-cols-2">
+      {isNew && (
+        <div className="sm:col-span-2">
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">ID</label>
+          <input value={form.id} onChange={e => set('id', e.target.value)} className="admin-input" placeholder="gift_wrap" />
+        </div>
+      )}
+      <div className="sm:col-span-2">
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Название</label>
+        <input value={form.name} onChange={e => set('name', e.target.value)} maxLength={80} className="admin-input" placeholder="Подарочная упаковка" />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Цена ₽</label>
+        <input type="number" value={form.price} onChange={e => set('price', +e.target.value)} className="admin-input" min={0} />
+      </div>
+      <div className="flex items-end">
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <input type="checkbox" checked={form.active} onChange={e => set('active', e.target.checked)} />
+          Активна
+        </label>
+      </div>
+      <div className="sm:col-span-2 flex gap-2 justify-end">
+        <button type="button" onClick={onCancel}
+          className="px-4 py-2 rounded-xl text-sm border border-border text-muted-foreground hover:bg-muted transition-colors">Отмена</button>
+        <button type="submit"
+          className="px-4 py-2 rounded-xl text-sm bg-primary text-primary-foreground font-medium hover:scale-[1.02] active:scale-95 transition-transform">
+          {option ? 'Сохранить' : 'Добавить'}
         </button>
       </div>
     </form>
@@ -632,11 +1063,18 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
       {(creating || editing) && (
         <CategoryForm
           category={editing}
+          categories={store.categories}
           colorOptions={colorOptions}
-          onSave={(data) => {
-            if (editing) { store.updateCategory(editing.id, data); toast.success('Категория обновлена'); }
-            else { store.addCategory(data as Omit<Category, 'id'> & { id?: string }); toast.success('Категория добавлена'); }
-            setEditing(null); setCreating(false);
+          onSave={async (data) => {
+            try {
+              if (editing) { await store.updateCategory(editing.id, data); toast.success('Категория обновлена'); }
+              else { await store.addCategory(data as Omit<Category, 'id'> & { id?: string }); toast.success('Категория добавлена'); }
+              setEditing(null); setCreating(false);
+            } catch (err) {
+              const code = err instanceof Error ? err.message : '';
+              if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+              else toast.error('Не удалось сохранить категорию');
+            }
           }}
           onCancel={() => { setEditing(null); setCreating(false); }}
         />
@@ -655,7 +1093,16 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
                 className="p-2 rounded-xl hover:bg-muted text-muted-foreground hover:text-primary transition-colors">
                 <Pencil size={15} />
               </button>
-              <button onClick={() => { store.deleteCategory(c.id); toast.success('Удалено'); }}
+              <button onClick={async () => {
+                try {
+                  await store.deleteCategory(c.id);
+                  toast.success('Удалено');
+                } catch (err) {
+                  const code = err instanceof Error ? err.message : '';
+                  if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                  else toast.error('Не удалось удалить категорию');
+                }
+              }}
                 className="p-2 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
                 <Trash2 size={15} />
               </button>
@@ -668,46 +1115,100 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
 }
 
 /* ─── Category Form ─── */
-function CategoryForm({ category, colorOptions, onSave, onCancel }: {
+function CategoryForm({ category, categories, colorOptions, onSave, onCancel }: {
   category: Category | null;
+  categories: Category[];
   colorOptions: { value: string; label: string }[];
   onSave: (data: Partial<Category> & { id?: string }) => void;
   onCancel: () => void;
 }) {
+  const defaultShowOnHome = (id: string) => !id.includes('/') && id !== 'packaging';
+  const baseId = category?.id || '';
+  const parts = baseId ? baseId.split('/') : [];
+  const initialParentId = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
+  const initialSlug = parts.length ? parts[parts.length - 1] : '';
+  const fallbackSetIds = useMemo(() => new Set(['gift', 'chocolate', 'truffles', 'asian', 'cookies']), []);
+  const initialGroup = category?.group
+    ?? (initialParentId
+      ? (categories.find(c => c.id === initialParentId)?.group || (fallbackSetIds.has(initialParentId) ? 'set' : 'single'))
+      : (fallbackSetIds.has(baseId) ? 'set' : 'single'));
   const [form, setForm] = useState({
-    id: category?.id || '',
+    parentId: initialParentId,
+    slug: initialSlug,
     name: category?.name || '',
     emoji: category?.emoji || '🍬',
     color: category?.color || 'candy-pink',
+    group: initialGroup,
+    showOnHome: category?.showOnHome ?? (baseId ? defaultShowOnHome(baseId) : !initialParentId),
   });
-  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+  const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }));
   const isNew = !category;
+  const parentOptions = useMemo(() => {
+    return categories
+      .filter(c => c.id !== category?.id)
+      .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  }, [categories, category?.id]);
+  const derivedId = (form.parentId ? `${form.parentId}/${form.slug}` : form.slug).trim();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) { toast.error('Введите название'); return; }
-    if (isNew && !form.id.trim()) { toast.error('Введите ID категории'); return; }
+    if (!form.slug.trim()) { toast.error('Введите ID категории'); return; }
+    const normalizedSlug = form.slug.trim().toLowerCase().replace(/\s+/g, '_');
+    const normalizedParent = form.parentId.trim();
+    const id = (normalizedParent ? `${normalizedParent}/${normalizedSlug}` : normalizedSlug);
     onSave({
-      ...(isNew ? { id: form.id.trim().toLowerCase().replace(/\s+/g, '_') } : {}),
+      ...(id ? { id } : {}),
       name: form.name.trim(),
       emoji: form.emoji,
       color: form.color,
+      group: form.group,
+      showOnHome: Boolean(form.showOnHome) && !id.includes('/'),
     });
   };
 
   return (
     <form onSubmit={handleSubmit} className="bg-card rounded-2xl p-5 border border-border/40 shadow-sm mb-6 grid gap-4 sm:grid-cols-2">
-      {isNew && (
-        <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">ID (латиница)</label>
-          <input value={form.id} onChange={e => set('id', e.target.value)} maxLength={30}
-            className="admin-input" placeholder="например: candy" />
-        </div>
-      )}
+      <div>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Родитель</label>
+        <select
+          value={form.parentId}
+          onChange={e => {
+            const value = e.target.value;
+            setForm(f => ({
+              ...f,
+              parentId: value,
+              showOnHome: value ? false : f.showOnHome,
+            }));
+          }}
+          className="admin-input"
+        >
+          <option value="">Без родителя</option>
+          {parentOptions.map(c => (
+            <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">ID (латиница)</label>
+        <input value={form.slug} onChange={e => set('slug', e.target.value)} maxLength={30}
+          className="admin-input" placeholder="например: candy" />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Раздел</label>
+        <select value={form.group} onChange={e => set('group', e.target.value)} className="admin-input">
+          <option value="set">Наборы</option>
+          <option value="single">Штучные товары</option>
+        </select>
+      </div>
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Название</label>
         <input value={form.name} onChange={e => set('name', e.target.value)} maxLength={50}
           className="admin-input" placeholder="Название категории" />
+      </div>
+      <div className="sm:col-span-2">
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Полный ID</label>
+        <input value={derivedId} readOnly className="admin-input bg-muted/40" />
       </div>
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Эмодзи</label>
@@ -720,6 +1221,14 @@ function CategoryForm({ category, colorOptions, onSave, onCancel }: {
           {colorOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       </div>
+      <label className="sm:col-span-2 flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={Boolean(form.showOnHome)}
+          onChange={e => set('showOnHome', e.target.checked)}
+        />
+        Показывать на главной
+      </label>
       <div className="sm:col-span-2 flex gap-2 justify-end">
         <button type="button" onClick={onCancel}
           className="px-4 py-2 rounded-xl text-sm border border-border text-muted-foreground hover:bg-muted transition-colors">Отмена</button>
@@ -748,12 +1257,18 @@ function OrdersTab({ store }: { store: ReturnType<typeof useStore> }) {
   const save = async (id: number) => {
     const data = drafts[id];
     if (!data) return;
-    await store.updateOrder(id, data);
-    toast.success('Заказ обновлён');
-    setDrafts(prev => {
-      const { [id]: _omit, ...rest } = prev;
-      return rest;
-    });
+    try {
+      await store.updateOrder(id, data);
+      toast.success('Заказ обновлён');
+      setDrafts(prev => {
+        const { [id]: _omit, ...rest } = prev;
+        return rest;
+      });
+    } catch (err) {
+      const code = err instanceof Error ? err.message : '';
+      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+      else toast.error('Не удалось обновить заказ');
+    }
   };
 
   const orders = store.orders || [];
@@ -845,12 +1360,20 @@ function OrdersTab({ store }: { store: ReturnType<typeof useStore> }) {
             <div className="bg-muted/50 rounded-xl p-3">
               <div className="text-xs font-medium text-muted-foreground mb-2">Состав заказа</div>
               <div className="grid gap-1">
-                {o.items.map(item => (
-                  <div key={item.id} className="flex items-center justify-between text-xs">
-                    <span className="text-foreground">{item.name} × {item.quantity}</span>
-                    <span className="text-muted-foreground">{item.price} ₽</span>
-                  </div>
-                ))}
+                {o.items.map(item => {
+                  const packagingPrice = item.packagingPrice || 0;
+                  const unit = item.price + packagingPrice;
+                  const line = unit * item.quantity;
+                  return (
+                    <div key={item.id} className="flex items-center justify-between text-xs gap-3">
+                      <span className="text-foreground truncate">
+                        {item.name} × {item.quantity}
+                        {packagingPrice > 0 && item.packagingName ? ` · упаковка: ${item.packagingName} (+${packagingPrice} ₽)` : ''}
+                      </span>
+                      <span className="text-muted-foreground whitespace-nowrap">{line} ₽</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -1022,10 +1545,16 @@ function PromosTab({ store }: { store: ReturnType<typeof useStore> }) {
         <PromoForm
           promo={editing}
           categories={store.categories}
-          onSave={(data) => {
-            if (editing) { store.updatePromo(editing.id, data); toast.success('Промокод обновлён'); }
-            else { store.addPromo(data as any); toast.success('Промокод добавлен'); }
-            setEditing(null); setCreating(false);
+          onSave={async (data) => {
+            try {
+              if (editing) { await store.updatePromo(editing.id, data); toast.success('Промокод обновлён'); }
+              else { await store.addPromo(data as any); toast.success('Промокод добавлен'); }
+              setEditing(null); setCreating(false);
+            } catch (err) {
+              const code = err instanceof Error ? err.message : '';
+              if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+              else toast.error('Не удалось сохранить промокод');
+            }
           }}
           onCancel={() => { setEditing(null); setCreating(false); }}
         />
@@ -1050,7 +1579,16 @@ function PromosTab({ store }: { store: ReturnType<typeof useStore> }) {
                 className="p-2 rounded-xl hover:bg-muted text-muted-foreground hover:text-primary transition-colors">
                 <Pencil size={15} />
               </button>
-              <button onClick={() => { store.deletePromo(pr.id); toast.success('Удалено'); }}
+              <button onClick={async () => {
+                try {
+                  await store.deletePromo(pr.id);
+                  toast.success('Удалено');
+                } catch (err) {
+                  const code = err instanceof Error ? err.message : '';
+                  if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                  else toast.error('Не удалось удалить промокод');
+                }
+              }}
                 className="p-2 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
                 <Trash2 size={15} />
               </button>
@@ -1177,10 +1715,16 @@ function ArticlesTab({ store }: { store: ReturnType<typeof useStore> }) {
         <ArticleForm
           products={store.products}
           article={editing}
-          onSave={(data) => {
-            if (editing) { store.updateArticle(editing.id, data); toast.success('Статья обновлена'); }
-            else { store.addArticle(data as Omit<Article, 'id'>); toast.success('Статья добавлена'); }
-            setEditing(null); setCreating(false);
+          onSave={async (data) => {
+            try {
+              if (editing) { await store.updateArticle(editing.id, data); toast.success('Статья обновлена'); }
+              else { await store.addArticle(data as Omit<Article, 'id'>); toast.success('Статья добавлена'); }
+              setEditing(null); setCreating(false);
+            } catch (err) {
+              const code = err instanceof Error ? err.message : '';
+              if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+              else toast.error('Не удалось сохранить статью');
+            }
           }}
           onCancel={() => { setEditing(null); setCreating(false); }}
         />
@@ -1201,7 +1745,16 @@ function ArticlesTab({ store }: { store: ReturnType<typeof useStore> }) {
                 className="p-2 rounded-xl hover:bg-muted text-muted-foreground hover:text-primary transition-colors">
                 <Pencil size={15} />
               </button>
-              <button onClick={() => { store.deleteArticle(a.id); toast.success('Удалено'); }}
+              <button onClick={async () => {
+                try {
+                  await store.deleteArticle(a.id);
+                  toast.success('Удалено');
+                } catch (err) {
+                  const code = err instanceof Error ? err.message : '';
+                  if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                  else toast.error('Не удалось удалить статью');
+                }
+              }}
                 className="p-2 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
                 <Trash2 size={15} />
               </button>
@@ -1327,7 +1880,7 @@ function FooterTab({ store }: { store: ReturnType<typeof useStore> }) {
 
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const deliveryItems = form.deliveryItems.split('\n').map(s => s.trim()).filter(Boolean);
     const socialItems = form.socialItems.split('\n').map(s => s.trim()).filter(Boolean);
@@ -1340,20 +1893,26 @@ function FooterTab({ store }: { store: ReturnType<typeof useStore> }) {
     if (!form.email.trim()) { toast.error('Введите email'); return; }
     if (!form.address.trim()) { toast.error('Введите адрес'); return; }
     if (!form.copyright.trim()) { toast.error('Введите копирайт'); return; }
-    store.updateFooter({
-      brandEmoji: form.brandEmoji.trim() || '🍬',
-      brandName: form.brandName.trim(),
-      description: form.description.trim(),
-      deliveryTitle: form.deliveryTitle.trim(),
-      deliveryItems,
-      contactsTitle: form.contactsTitle.trim(),
-      phone: form.phone.trim(),
-      email: form.email.trim(),
-      address: form.address.trim(),
-      socialItems,
-      copyright: form.copyright.trim(),
-    });
-    toast.success('Футер обновлён');
+    try {
+      await store.updateFooter({
+        brandEmoji: form.brandEmoji.trim() || '🍬',
+        brandName: form.brandName.trim(),
+        description: form.description.trim(),
+        deliveryTitle: form.deliveryTitle.trim(),
+        deliveryItems,
+        contactsTitle: form.contactsTitle.trim(),
+        phone: form.phone.trim(),
+        email: form.email.trim(),
+        address: form.address.trim(),
+        socialItems,
+        copyright: form.copyright.trim(),
+      });
+      toast.success('Футер обновлён');
+    } catch (err) {
+      const code = err instanceof Error ? err.message : '';
+      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+      else toast.error('Не удалось обновить футер');
+    }
   };
 
   return (

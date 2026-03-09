@@ -2,6 +2,8 @@ import { X, Minus, Plus, Trash2, Tag } from 'lucide-react';
 import { CartItem } from './useCart';
 import { useState } from 'react';
 import { resolveMediaUrl } from '@/lib/api';
+import { useStore } from './useStore';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface CartDrawerProps {
   open: boolean;
@@ -12,6 +14,7 @@ interface CartDrawerProps {
   total: number;
   promoCode: string | null;
   onUpdateQty: (id: number, qty: number) => void;
+  onUpdatePackaging: (id: number, packagingId: string | null) => void;
   onRemove: (id: number) => void;
   onApplyPromo: (code: string) => boolean | Promise<boolean>;
   onCheckout: () => void;
@@ -19,10 +22,17 @@ interface CartDrawerProps {
 
 export default function CartDrawer({
   open, onClose, items, subtotal, discount, total,
-  promoCode, onUpdateQty, onRemove, onApplyPromo, onCheckout
+  promoCode, onUpdateQty, onUpdatePackaging, onRemove, onApplyPromo, onCheckout
 }: CartDrawerProps) {
+  const NONE_VALUE = '__none__';
   const [promoInput, setPromoInput] = useState('');
   const [promoError, setPromoError] = useState(false);
+  const { packagingOptions } = useStore();
+  const activePackaging = packagingOptions.filter(p => p.active);
+  const getPackaging = (id?: string | null) => {
+    if (!id) return null;
+    return activePackaging.find(p => p.id === id) ?? null;
+  };
 
   const handlePromo = async () => {
     const ok = await onApplyPromo(promoInput.trim());
@@ -65,6 +75,36 @@ export default function CartDrawer({
                 <div className="flex-1 min-w-0">
                   <h4 className="font-display font-medium text-sm truncate">{item.product.name}</h4>
                   <p className="font-display font-bold text-primary text-sm mt-0.5">{item.product.price} ₽</p>
+                  {(item.product.packagingMode && item.product.packagingMode !== 'none') && (
+                    <div className="mt-1.5">
+                      {item.product.packagingMode === 'selectable' ? (
+                        <Select
+                          value={item.packagingId ?? NONE_VALUE}
+                          onValueChange={(v) => onUpdatePackaging(item.product.id, v === NONE_VALUE ? null : v)}
+                        >
+                          <SelectTrigger className="h-auto w-full px-3 py-2 rounded-2xl bg-card border border-border text-xs focus:ring-2 focus:ring-primary/30">
+                            <SelectValue placeholder="Упаковка" />
+                          </SelectTrigger>
+                          <SelectContent className="rounded-2xl">
+                            <SelectItem value={NONE_VALUE}>Без упаковки</SelectItem>
+                            {activePackaging.map(p => (
+                              <SelectItem key={p.id} value={p.id}>
+                                {p.name} · {p.price} ₽
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <div className="text-xs text-muted-foreground">
+                          {(() => {
+                            const p = getPackaging(item.packagingId ?? item.product.standardPackagingId ?? null);
+                            if (!p) return <>Упаковка: стандартная</>;
+                            return <>Упаковка: {p.name}{p.price ? ` · ${p.price} ₽` : ''}</>;
+                          })()}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="flex items-center gap-2 mt-1.5">
                     <button
                       onClick={() => onUpdateQty(item.product.id, item.quantity - 1)}

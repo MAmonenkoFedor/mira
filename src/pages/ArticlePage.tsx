@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Clock, Tag } from 'lucide-react';
 import { useStore } from '@/components/candy-store/useStore';
@@ -9,7 +9,6 @@ import Checkout from '@/components/candy-store/Checkout';
 import { useCart } from '@/components/candy-store/useCart';
 import { toast } from 'sonner';
 import { resolveMediaUrl } from '@/lib/api';
-import ProductModal from '@/components/candy-store/ProductModal';
 import { badgeToneSoftClasses } from '@/components/candy-store/data';
 
 export default function ArticlePage() {
@@ -20,7 +19,6 @@ export default function ArticlePage() {
   const article = articles.find(a => a.slug === slug);
   const linked = article?.productId ? products.find((p: any) => p.id === article.productId && (p.active ?? true)) : null;
   const linkedBadge = useMemo(() => linked ? badges.find((b: any) => b.id === linked.badge && b.active) : null, [badges, linked]);
-  const [preview, setPreview] = useState<any | null>(null);
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   }, [slug]);
@@ -91,11 +89,12 @@ export default function ArticlePage() {
                       className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium">
                       Заказать: {linked.name}
                     </button>
-                    <button
-                      onClick={() => setPreview(linked)}
-                      className="px-4 py-2 rounded-xl border border-border text-sm">
-                      Открыть в каталоге
-                    </button>
+                    <Link
+                      to={`/product/${linked.id}`}
+                      className="px-4 py-2 rounded-xl border border-border text-sm"
+                    >
+                      Открыть страницу товара
+                    </Link>
                   </div>
                 </div>
               </div>
@@ -119,6 +118,7 @@ export default function ArticlePage() {
           total={cart.total}
           promoCode={cart.promoCode}
           onUpdateQty={cart.updateQuantity}
+          onUpdatePackaging={cart.updatePackaging}
           onRemove={cart.removeItem}
           onApplyPromo={cart.applyPromo}
           onCheckout={() => { cart.setIsCartOpen(false); cart.setIsCheckoutOpen(true); }}
@@ -129,13 +129,6 @@ export default function ArticlePage() {
           total={cart.total}
           onPlaceOrder={cart.placeOrder}
         />
-        {preview && (
-          <ProductModal
-            product={preview}
-            onClose={() => setPreview(null)}
-            onAdd={(p, qty) => { cart.addItem(p, qty); cart.setIsCartOpen(true); }}
-          />
-        )}
       </div>
     </>
   );

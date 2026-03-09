@@ -24,6 +24,7 @@ export async function migrate(pool: Pool) {
       color text
     );
   `);
+  await pool.query(`alter table categories add column if not exists show_on_home boolean`);
   await pool.query(`
     create table if not exists products(
       id serial primary key,
@@ -102,6 +103,18 @@ export async function migrate(pool: Pool) {
       price integer not null
     );
   `);
+  await pool.query(`alter table order_items add column if not exists packaging_id text`);
+  await pool.query(`alter table order_items add column if not exists packaging_name text`);
+  await pool.query(`alter table order_items add column if not exists packaging_price integer not null default 0`);
+
+  await pool.query(`
+    create table if not exists packaging_options(
+      id text primary key,
+      name text not null,
+      price integer not null default 0,
+      active boolean not null default true
+    );
+  `);
   await pool.query(`
     create table if not exists hero_images(
       id serial primary key,
@@ -116,4 +129,40 @@ export async function migrate(pool: Pool) {
       data jsonb not null
     );
   `);
+
+  await pool.query(`alter table products add column if not exists packaging_mode text`);
+  await pool.query(`alter table products add column if not exists standard_packaging_id text references packaging_options(id)`);
+  await pool.query(`alter table products add column if not exists sku text`);
+  await pool.query(`alter table products add column if not exists composition_short text`);
+  await pool.query(`alter table products add column if not exists shelf_life text`);
+  await pool.query(`alter table products add column if not exists country text`);
+  await pool.query(`alter table products add column if not exists composition_set text`);
+  await pool.query(`alter table products add column if not exists storage_temperature text`);
+  await pool.query(`alter table products add column if not exists product_features text`);
+  await pool.query(`alter table products add column if not exists set_weight text`);
+  await pool.query(`alter table products add column if not exists package_dimensions text`);
+  await pool.query(`alter table products add column if not exists description_long text`);
+  await pool.query(`alter table products add column if not exists categories text[]`);
+  await pool.query(`update products set categories=array[category] where categories is null and category is not null`);
+  await pool.query(`
+    update products
+    set standard_packaging_id='standard'
+    where packaging_mode='standard'
+      and standard_packaging_id is null
+      and exists (select 1 from packaging_options where id='standard')
+  `);
+  await pool.query(`
+    update products
+    set packaging_mode=null
+    where packaging_mode='standard'
+      and standard_packaging_id is null
+  `);
+
+  await pool.query(`select setval(pg_get_serial_sequence('products','id'), (select coalesce(max(id),1) from products), (select count(*)>0 from products))`);
+  await pool.query(`select setval(pg_get_serial_sequence('articles','id'), (select coalesce(max(id),1) from articles), (select count(*)>0 from articles))`);
+  await pool.query(`select setval(pg_get_serial_sequence('orders','id'), (select coalesce(max(id),1) from orders), (select count(*)>0 from orders))`);
+  await pool.query(`select setval(pg_get_serial_sequence('order_items','id'), (select coalesce(max(id),1) from order_items), (select count(*)>0 from order_items))`);
+  await pool.query(`select setval(pg_get_serial_sequence('admins','id'), (select coalesce(max(id),1) from admins), (select count(*)>0 from admins))`);
+  await pool.query(`select setval(pg_get_serial_sequence('promocodes','id'), (select coalesce(max(id),1) from promocodes), (select count(*)>0 from promocodes))`);
+  await pool.query(`select setval(pg_get_serial_sequence('hero_images','id'), (select coalesce(max(id),1) from hero_images), (select count(*)>0 from hero_images))`);
 }

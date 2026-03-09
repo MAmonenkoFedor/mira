@@ -196,8 +196,16 @@ function requireAuth(handler: express.RequestHandler): express.RequestHandler {
 }
 
 app.get("/api/categories", async (_req, res) => {
-  const { rows } = await pool.query("select * from categories order by name");
-  res.json(rows);
+  const { rows } = await pool.query("select id,name,emoji,color,show_on_home from categories order by name");
+  res.json(
+    rows.map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      emoji: r.emoji ?? undefined,
+      color: r.color ?? undefined,
+      showOnHome: r.show_on_home ?? null,
+    }))
+  );
 });
 
 const CategorySchema = z.object({
@@ -205,13 +213,14 @@ const CategorySchema = z.object({
   name: z.string(),
   emoji: z.string().optional().nullable(),
   color: z.string().optional().nullable(),
+  showOnHome: z.boolean().optional().nullable(),
 });
 
 app.post("/api/categories", requireAuth(async (req, res) => {
   const data = CategorySchema.parse(req.body);
   await pool.query(
-    "insert into categories(id,name,emoji,color) values($1,$2,$3,$4) on conflict (id) do update set name=excluded.name,emoji=excluded.emoji,color=excluded.color",
-    [data.id, data.name, data.emoji ?? null, data.color ?? null]
+    "insert into categories(id,name,emoji,color,show_on_home) values($1,$2,$3,$4,$5) on conflict (id) do update set name=excluded.name,emoji=excluded.emoji,color=excluded.color,show_on_home=coalesce(excluded.show_on_home,categories.show_on_home)",
+    [data.id, data.name, data.emoji ?? null, data.color ?? null, data.showOnHome ?? null]
   );
   res.status(201).json({ ok: true });
 }));
@@ -220,8 +229,8 @@ app.put("/api/categories/:id", requireAuth(async (req, res) => {
   const data = CategorySchema.partial({ id: true }).parse(req.body);
   const id = req.params.id;
   await pool.query(
-    "update categories set name=coalesce($2,name), emoji=$3, color=$4 where id=$1",
-    [id, data.name ?? null, data.emoji ?? null, data.color ?? null]
+    "update categories set name=coalesce($2,name), emoji=$3, color=$4, show_on_home=coalesce($5,show_on_home) where id=$1",
+    [id, data.name ?? null, data.emoji ?? null, data.color ?? null, data.showOnHome ?? null]
   );
   res.json({ ok: true });
 }));
@@ -233,22 +242,39 @@ app.delete("/api/categories/:id", requireAuth(async (req, res) => {
 
 app.get("/api/products", async (_req, res) => {
   const { rows } = await pool.query(
-    "select id,name,price,old_price,category,badge,description,image,images,popularity,active from products order by id"
+    "select id,name,price,old_price,category,categories,badge,description,sku,composition_short,shelf_life,country,composition_set,storage_temperature,product_features,set_weight,package_dimensions,description_long,image,images,popularity,active,packaging_mode,standard_packaging_id from products order by id"
   );
   res.json(
-    rows.map((r: any) => ({
-      id: r.id,
-      name: r.name,
-      price: r.price,
-      oldPrice: r.old_price ?? undefined,
-      category: r.category,
-      badge: r.badge ?? undefined,
-      description: r.description,
-      image: r.image,
-      images: r.images ?? undefined,
-      popularity: r.popularity ?? 0,
-      active: r.active,
-    }))
+    rows.map((r: any) => {
+      const categories = Array.isArray(r.categories) ? r.categories.filter(Boolean) : [];
+      const primary = r.category ?? categories[0] ?? "";
+      return {
+        id: r.id,
+        name: r.name,
+        price: r.price,
+        oldPrice: r.old_price ?? undefined,
+        category: primary,
+        categories: categories.length ? categories : (primary ? [primary] : []),
+        badge: r.badge ?? undefined,
+        description: r.description,
+        sku: r.sku ?? undefined,
+        compositionShort: r.composition_short ?? undefined,
+        shelfLife: r.shelf_life ?? undefined,
+        country: r.country ?? undefined,
+        compositionSet: r.composition_set ?? undefined,
+        storageTemperature: r.storage_temperature ?? undefined,
+        productFeatures: r.product_features ?? undefined,
+        setWeight: r.set_weight ?? undefined,
+        packageDimensions: r.package_dimensions ?? undefined,
+        descriptionLong: r.description_long ?? undefined,
+        image: r.image,
+        images: r.images ?? undefined,
+        popularity: r.popularity ?? 0,
+        active: r.active,
+        packagingMode: r.packaging_mode ?? undefined,
+        standardPackagingId: r.standard_packaging_id ?? null,
+      };
+    })
   );
 });
 
@@ -256,30 +282,66 @@ const ProductSchema = z.object({
   name: z.string(),
   price: z.number().int(),
   oldPrice: z.number().int().optional(),
-  category: z.string(),
+  category: z.string().optional(),
+  categories: z.array(z.string()).optional(),
   badge: z.string().optional(),
   description: z.string(),
+  sku: z.string().optional(),
+  compositionShort: z.string().optional(),
+  shelfLife: z.string().optional(),
+  country: z.string().optional(),
+  compositionSet: z.string().optional(),
+  storageTemperature: z.string().optional(),
+  productFeatures: z.string().optional(),
+  setWeight: z.string().optional(),
+  packageDimensions: z.string().optional(),
+  descriptionLong: z.string().optional(),
   image: z.string(),
   images: z.array(z.string()).optional(),
   popularity: z.number().int().optional(),
   active: z.boolean().optional(),
+  packagingMode: z.enum(["none", "standard", "selectable"]).optional(),
+  standardPackagingId: z.string().nullable().optional(),
 });
 
 app.post("/api/products", requireAuth(async (req, res) => {
   const p = ProductSchema.parse(req.body);
+  const categories = (p.categories && p.categories.length ? p.categories : (p.category ? [p.category] : [])).filter(Boolean);
+  if (!categories.length) return res.status(400).json({ error: "missing_category" });
+  const primaryCategory = categories[0] ?? null;
+  let packagingMode = p.packagingMode && p.packagingMode !== "none" ? p.packagingMode : null;
+  let standardPackagingId = p.packagingMode === "standard" ? (p.standardPackagingId ?? null) : null;
+  if (packagingMode === "standard" && !standardPackagingId) {
+    const { rows: has } = await pool.query("select 1 from packaging_options where id=$1", ["standard"]);
+    standardPackagingId = has.length ? "standard" : null;
+    if (!standardPackagingId) packagingMode = null;
+  }
   const { rows } = await pool.query(
-    "insert into products(name,price,old_price,category,badge,description,image,images,popularity,active) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id",
+    "insert into products(name,price,old_price,category,categories,badge,description,sku,composition_short,shelf_life,country,composition_set,storage_temperature,product_features,set_weight,package_dimensions,description_long,image,images,popularity,active,packaging_mode,standard_packaging_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) returning id",
     [
       p.name,
       p.price,
       p.oldPrice ?? null,
-      p.category,
+      primaryCategory,
+      categories,
       p.badge ?? null,
       p.description,
+      p.sku ?? null,
+      p.compositionShort ?? null,
+      p.shelfLife ?? null,
+      p.country ?? null,
+      p.compositionSet ?? null,
+      p.storageTemperature ?? null,
+      p.productFeatures ?? null,
+      p.setWeight ?? null,
+      p.packageDimensions ?? null,
+      p.descriptionLong ?? null,
       p.image,
       p.images ?? null,
       p.popularity ?? 0,
       p.active ?? true,
+      packagingMode,
+      standardPackagingId,
     ]
   );
   res.status(201).json({ id: rows[0].id });
@@ -288,20 +350,54 @@ app.post("/api/products", requireAuth(async (req, res) => {
 app.put("/api/products/:id", requireAuth(async (req, res) => {
   const id = Number(req.params.id);
   const p = ProductSchema.partial().parse(req.body);
+  const hasCategories = Object.prototype.hasOwnProperty.call(p, "categories");
+  if (hasCategories && (!Array.isArray(p.categories) || p.categories.filter(Boolean).length === 0)) {
+    return res.status(400).json({ error: "missing_category" });
+  }
+  const nextCategories = hasCategories ? (p.categories ?? []).filter(Boolean) : null;
+  const nextPrimaryCategory = hasCategories ? (nextCategories![0] ?? null) : (p.category ?? null);
+  const hasPackagingMode = Object.prototype.hasOwnProperty.call(p, "packagingMode");
+  const hasStandardPackagingId = Object.prototype.hasOwnProperty.call(p, "standardPackagingId");
+  let nextPackagingMode = hasPackagingMode ? (p.packagingMode === "none" ? null : (p.packagingMode ?? null)) : null;
+  let nextStandardPackagingId =
+    hasPackagingMode
+      ? (p.packagingMode === "standard" ? (p.standardPackagingId ?? null) : null)
+      : (hasStandardPackagingId ? (p.standardPackagingId ?? null) : null);
+  if ((hasPackagingMode || hasStandardPackagingId) && nextPackagingMode === "standard" && !nextStandardPackagingId) {
+    const { rows: has } = await pool.query("select 1 from packaging_options where id=$1", ["standard"]);
+    nextStandardPackagingId = has.length ? "standard" : null;
+    if (!nextStandardPackagingId) nextPackagingMode = null;
+  }
   await pool.query(
-    "update products set name=coalesce($2,name), price=coalesce($3,price), old_price=$4, category=coalesce($5,category), badge=$6, description=coalesce($7,description), image=coalesce($8,image), images=$9, popularity=coalesce($10,popularity), active=coalesce($11,active) where id=$1",
+    "update products set name=coalesce($2,name), price=coalesce($3,price), old_price=$4, category=coalesce($5,category), categories=case when $26 then $27 when $5 is not null then array[$5] else categories end, badge=$6, description=coalesce($7,description), sku=coalesce($8,sku), composition_short=coalesce($9,composition_short), shelf_life=coalesce($10,shelf_life), country=coalesce($11,country), composition_set=coalesce($12,composition_set), storage_temperature=coalesce($13,storage_temperature), product_features=coalesce($14,product_features), set_weight=coalesce($15,set_weight), package_dimensions=coalesce($16,package_dimensions), description_long=coalesce($17,description_long), image=coalesce($18,image), images=$19, popularity=coalesce($20,popularity), active=coalesce($21,active), packaging_mode=case when $22 then $23 when $24 and $25 is null and packaging_mode='standard' then null else packaging_mode end, standard_packaging_id=case when $24 then $25 else standard_packaging_id end where id=$1",
     [
       id,
       p.name ?? null,
       p.price ?? null,
       p.oldPrice ?? null,
-      p.category ?? null,
+      nextPrimaryCategory,
       p.badge ?? null,
       p.description ?? null,
+      p.sku ?? null,
+      p.compositionShort ?? null,
+      p.shelfLife ?? null,
+      p.country ?? null,
+      p.compositionSet ?? null,
+      p.storageTemperature ?? null,
+      p.productFeatures ?? null,
+      p.setWeight ?? null,
+      p.packageDimensions ?? null,
+      p.descriptionLong ?? null,
       p.image ?? null,
       p.images ?? null,
       p.popularity ?? null,
       p.active ?? null,
+      hasPackagingMode,
+      nextPackagingMode,
+      hasPackagingMode || hasStandardPackagingId,
+      nextStandardPackagingId,
+      hasCategories,
+      nextCategories,
     ]
   );
   res.json({ ok: true });
@@ -309,6 +405,45 @@ app.put("/api/products/:id", requireAuth(async (req, res) => {
 
 app.delete("/api/products/:id", requireAuth(async (req, res) => {
   await pool.query("delete from products where id=$1", [Number(req.params.id)]);
+  res.json({ ok: true });
+}));
+
+/* ─── Packaging ─── */
+const PackagingSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1),
+  price: z.number().int().min(0),
+  active: z.boolean().optional(),
+});
+
+app.get("/api/packaging", async (_req, res) => {
+  const { rows } = await pool.query("select id,name,price,active from packaging_options order by name");
+  res.json(rows.map((r: any) => ({ id: r.id, name: r.name, price: r.price, active: r.active })));
+});
+
+app.post("/api/packaging", requireAuth(async (req, res) => {
+  const p = PackagingSchema.parse(req.body);
+  await pool.query(
+    "insert into packaging_options(id,name,price,active) values($1,$2,$3,$4) on conflict (id) do update set name=excluded.name,price=excluded.price,active=excluded.active",
+    [p.id, p.name, p.price, p.active ?? true]
+  );
+  res.status(201).json({ ok: true });
+}));
+
+app.put("/api/packaging/:id", requireAuth(async (req, res) => {
+  const id = req.params.id;
+  const p = PackagingSchema.partial().parse(req.body);
+  await pool.query(
+    "update packaging_options set name=coalesce($2,name), price=coalesce($3,price), active=coalesce($4,active) where id=$1",
+    [id, p.name ?? null, p.price ?? null, p.active ?? null]
+  );
+  res.json({ ok: true });
+}));
+
+app.delete("/api/packaging/:id", requireAuth(async (req, res) => {
+  const id = req.params.id;
+  await pool.query("update products set standard_packaging_id=null where standard_packaging_id=$1", [id]);
+  await pool.query("delete from packaging_options where id=$1", [id]);
   res.json({ ok: true });
 }));
 
@@ -537,6 +672,9 @@ const OrderSchema = z.object({
         price: z.number(),
       }),
       quantity: z.number().int().positive(),
+      packagingId: z.string().nullable().optional(),
+      packagingName: z.string().nullable().optional(),
+      packagingPrice: z.number().int().nullable().optional(),
     })
   ),
   total: z.number().int(),
@@ -576,8 +714,17 @@ app.post("/api/orders", async (req, res) => {
     const orderId = rows[0].id as number;
     for (const item of o.items) {
       await client.query(
-        "insert into order_items(order_id,product_id,name,quantity,price) values($1,$2,$3,$4,$5)",
-        [orderId, item.product.id, item.product.name, item.quantity, item.product.price]
+        "insert into order_items(order_id,product_id,name,quantity,price,packaging_id,packaging_name,packaging_price) values($1,$2,$3,$4,$5,$6,$7,$8)",
+        [
+          orderId,
+          item.product.id,
+          item.product.name,
+          item.quantity,
+          item.product.price,
+          item.packagingId ?? null,
+          item.packagingName ?? null,
+          item.packagingPrice ?? 0,
+        ]
       );
     }
     await client.query("commit");
@@ -614,7 +761,10 @@ app.get("/api/orders", requireAuth(async (_req, res) => {
             'productId', oi.product_id,
             'name', oi.name,
             'quantity', oi.quantity,
-            'price', oi.price
+            'price', oi.price,
+            'packagingId', oi.packaging_id,
+            'packagingName', oi.packaging_name,
+            'packagingPrice', oi.packaging_price
           )
         ) filter (where oi.id is not null),
         '[]'

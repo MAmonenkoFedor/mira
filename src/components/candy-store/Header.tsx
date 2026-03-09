@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { ShoppingCart, Menu, X } from 'lucide-react';
 
 interface HeaderProps {
@@ -8,6 +8,7 @@ interface HeaderProps {
 }
 
 const navLinks = [
+  { label: 'Каталог', href: '/catalog' },
   { label: 'Категории', href: '/#categories' },
   { label: 'Товары', href: '/#products' },
   { label: 'Отзывы', href: '/#reviews' },
@@ -18,12 +19,25 @@ const navLinks = [
 
 export default function Header({ cartCount, onCartClick }: HeaderProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const location = useLocation();
   const logoCandidates = useMemo(
     () => ['/logo.png', '/logo.webp', '/logo.svg', '/images/logo.png', '/images/logo.webp', '/images/logo.svg'],
     []
   );
   const [logoSrc, setLogoSrc] = useState(logoCandidates[0]);
   const [logoFailed, setLogoFailed] = useState(false);
+
+  useEffect(() => {
+    const raw = location.hash;
+    if (!raw) return;
+    const id = decodeURIComponent(raw.replace('#', ''));
+    if (!id) return;
+    const el = document.getElementById(id);
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, [location.hash, location.pathname]);
 
   return (
     <header className="sticky top-0 z-50 bg-card/90 backdrop-blur-md border-b border-border/60 shadow-sm">

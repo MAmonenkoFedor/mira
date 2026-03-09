@@ -46,6 +46,18 @@ export const api = {
   async getProducts() {
     return j(fetch(`${base}/api/products`));
   },
+  async getPackagingOptions() {
+    return j(fetch(`${base}/api/packaging`));
+  },
+  async addPackagingOption(p: any) {
+    return j(fetch(`${base}/api/packaging`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+  },
+  async updatePackagingOption(id: string, p: any) {
+    return j(fetch(`${base}/api/packaging/${id}`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+  },
+  async deletePackagingOption(id: string) {
+    return j(fetch(`${base}/api/packaging/${id}`, withAuth({ method: "DELETE" })));
+  },
   async getHeroImages() {
     return j(fetch(`${base}/api/hero-images`));
   },
@@ -104,10 +116,10 @@ export const api = {
     return j(fetch(`${base}/api/categories`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(c) })));
   },
   async updateCategory(id: string, c: any) {
-    return j(fetch(`${base}/api/categories/${id}`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(c) })));
+    return j(fetch(`${base}/api/categories/${encodeURIComponent(id)}`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(c) })));
   },
   async deleteCategory(id: string) {
-    return j(fetch(`${base}/api/categories/${id}`, withAuth({ method: "DELETE" })));
+    return j(fetch(`${base}/api/categories/${encodeURIComponent(id)}`, withAuth({ method: "DELETE" })));
   },
   async getArticles() {
     return j(fetch(`${base}/api/articles`));

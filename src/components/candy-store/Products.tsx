@@ -9,11 +9,13 @@ type BadgeFilter = 'all' | string;
 
 interface ProductsProps {
   activeCategory: string | null;
-  onAddToCart: (product: Product) => void;
-  onProductClick: (product: Product) => void;
+  onAddToCart: (product: Product, qty?: number, packagingId?: string | null) => void;
+  productsOverride?: Product[];
+  applyCategoryFilter?: boolean;
+  categoryFilterMode?: 'exact' | 'hierarchy';
 }
 
-export default function Products({ activeCategory, onAddToCart, onProductClick }: ProductsProps) {
+export default function Products({ activeCategory, onAddToCart, productsOverride, applyCategoryFilter = true, categoryFilterMode = 'exact' }: ProductsProps) {
   const { products, badges } = useStore();
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortKey>('popular');
@@ -27,10 +29,22 @@ export default function Products({ activeCategory, onAddToCart, onProductClick }
   }, [activeBadges, badgeFilter]);
 
   const filtered = useMemo(() => {
-    let list = [...products];
+    const getCategories = (p: Product) => {
+      const anyP = p as any;
+      const arr = Array.isArray(anyP?.categories) ? anyP.categories.filter(Boolean) : [];
+      if (arr.length) return arr as string[];
+      return anyP?.category ? [String(anyP.category)] : [];
+    };
 
-    if (activeCategory) {
-      list = list.filter(p => p.category === activeCategory);
+    let list = [...(productsOverride ?? products)];
+    list = list.filter(p => p.active !== false);
+
+    if (applyCategoryFilter && activeCategory) {
+      if (categoryFilterMode === 'hierarchy') {
+        list = list.filter(p => getCategories(p).some(c => c === activeCategory || c.startsWith(`${activeCategory}/`)));
+      } else {
+        list = list.filter(p => getCategories(p).some(c => c === activeCategory));
+      }
     }
 
     if (search.trim()) {
@@ -49,7 +63,11 @@ export default function Products({ activeCategory, onAddToCart, onProductClick }
     }
 
     return list;
-  }, [activeCategory, search, sort, badgeFilter, products]);
+  }, [activeCategory, search, sort, badgeFilter, products, productsOverride, applyCategoryFilter, categoryFilterMode]);
+
+  const handleAdd = useMemo(() => {
+    return (product: Product, packagingId?: string | null) => onAddToCart(product, 1, packagingId);
+  }, [onAddToCart]);
 
   return (
     <section id="products" className="py-12 md:py-16 candy-pattern">
@@ -106,7 +124,7 @@ export default function Products({ activeCategory, onAddToCart, onProductClick }
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
             {filtered.map(p => (
               <div key={p.id} id={`product-${p.id}`} className="reveal">
-                <ProductCard product={p} onAdd={onAddToCart} onClick={onProductClick} />
+                <ProductCard product={p} onAdd={handleAdd} />
               </div>
             ))}
           </div>

@@ -3,13 +3,26 @@ export interface Product {
   name: string;
   price: number;
   oldPrice?: number;
-  category: string;
+  category?: string;
+  categories?: string[];
   badge?: string;
   description: string;
+  sku?: string;
+  compositionShort?: string;
+  shelfLife?: string;
+  country?: string;
+  compositionSet?: string;
+  storageTemperature?: string;
+  productFeatures?: string;
+  setWeight?: string;
+  packageDimensions?: string;
+  descriptionLong?: string;
   image: string;
   images?: string[];
   popularity: number;
   active?: boolean;
+  packagingMode?: 'none' | 'standard' | 'selectable';
+  standardPackagingId?: string | null;
 }
 
 export interface Category {
@@ -17,6 +30,15 @@ export interface Category {
   name: string;
   emoji: string;
   color: string;
+  group?: 'set' | 'single';
+  showOnHome?: boolean | null;
+}
+
+export interface PackagingOption {
+  id: string;
+  name: string;
+  price: number;
+  active: boolean;
 }
 
 export type BadgeTone = 'primary' | 'secondary' | 'destructive';
@@ -72,16 +94,30 @@ export const footerData: FooterData = {
 };
 
 export const categories: Category[] = [
-  { id: 'gift', name: 'Подарочные наборы', emoji: '🎁', color: 'candy-pink' },
-  { id: 'chocolate', name: 'Шоколад', emoji: '🍫', color: 'candy-mint' },
-  { id: 'truffles', name: 'Трюфели', emoji: '🟤', color: 'candy-lavender' },
-  { id: 'asian', name: 'Азиатские сладости', emoji: '🍡', color: 'candy-blue' },
-  { id: 'cookies', name: 'Печенье и вафли', emoji: '🍪', color: 'candy-banana' },
+  { id: 'gift', name: 'Подарочные наборы', emoji: '🎁', color: 'candy-pink', group: 'set' },
+  { id: 'chocolate', name: 'Шоколад', emoji: '🍫', color: 'candy-mint', group: 'set' },
+  { id: 'truffles', name: 'Трюфели', emoji: '🟤', color: 'candy-lavender', group: 'set' },
+  { id: 'asian', name: 'Азиатские сладости', emoji: '🍡', color: 'candy-blue', group: 'set' },
+  { id: 'cookies', name: 'Печенье и вафли', emoji: '🍪', color: 'candy-banana', group: 'set' },
+  { id: 'lollipops', name: 'Леденцы', emoji: '🍭', color: 'candy-pink', group: 'single' },
+  { id: 'sour_lollipops', name: 'Кислые леденцы', emoji: '🍋', color: 'candy-mint', group: 'single' },
+  { id: 'chewy_candies', name: 'Жевательные конфеты', emoji: '🍬', color: 'candy-lavender', group: 'single' },
+  { id: 'marmalade_jelly', name: 'Мармелад и желе', emoji: '🍓', color: 'candy-blue', group: 'single' },
+  { id: 'marshmallow', name: 'Маршмеллоу', emoji: '☁️', color: 'candy-banana', group: 'single' },
+  { id: 'snacks', name: 'Снеки', emoji: '🥨', color: 'candy-mint', group: 'single' },
+  { id: 'chewing_gum', name: 'Жевательная резинка', emoji: '🫧', color: 'candy-blue', group: 'single' },
+  { id: 'refreshing_candies', name: 'Освежающие конфеты', emoji: '🌿', color: 'candy-lavender', group: 'single' },
+  { id: 'unique_sweets', name: 'Уникальные сладости', emoji: '✨', color: 'candy-pink', group: 'single' },
 ];
 
 export const badges: Badge[] = [
   { id: 'new', label: 'Новинка', tone: 'primary', active: true },
   { id: 'sale', label: 'Скидка', tone: 'destructive', active: true },
+];
+
+export const packagingOptions: PackagingOption[] = [
+  { id: 'standard', name: 'Стандартная', price: 0, active: true },
+  { id: 'gift_wrap', name: 'Подарочная упаковка', price: 149, active: true },
 ];
 
 export const badgeToneClasses: Record<BadgeTone, string> = {

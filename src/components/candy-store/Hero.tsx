@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from './useStore';
 import { resolveMediaUrl } from '@/lib/api';
+import { Link } from 'react-router-dom';
 
 export default function Hero() {
   const { heroImages } = useStore();
@@ -45,23 +46,17 @@ export default function Hero() {
             Натуральные конфеты, шоколад и подарочные наборы — с любовью для самых маленьких сладкоежек
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
-            <a
-              href="#products"
+            <Link
+              to="/catalog"
               className="inline-flex items-center justify-center px-8 py-3.5 rounded-full bg-primary text-primary-foreground font-display font-semibold text-base hover:scale-105 active:scale-95 transition-transform duration-200 shadow-candy"
             >
-              Выбрать сладости
-            </a>
+              🎁 Выбрать набор
+            </Link>
             <a
-              href="#products"
-              onClick={() => {
-                // Will trigger filter to gifts via URL hash
-                setTimeout(() => {
-                  window.dispatchEvent(new CustomEvent('filter-category', { detail: 'gift' }));
-                }, 400);
-              }}
+              href="/#categories"
               className="inline-flex items-center justify-center px-8 py-3.5 rounded-full bg-card text-foreground font-display font-semibold text-base border-2 border-primary/30 hover:border-primary/60 hover:scale-105 active:scale-95 transition-all duration-200"
             >
-              🎁 Собрать подарочный набор
+              Выбрать сладости
             </a>
           </div>
         </div>

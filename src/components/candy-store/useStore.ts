@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { getToken } from '@/lib/auth';
-import { products as defaultProducts, categories as defaultCategories, badges as defaultBadges, footerData, type FooterData, type Product, type Category, type Promo, type Badge } from './data';
+import { products as defaultProducts, categories as defaultCategories, badges as defaultBadges, packagingOptions as defaultPackagingOptions, footerData, type FooterData, type Product, type Category, type Promo, type Badge, type PackagingOption } from './data';
 
 export interface Article {
   id: number;
@@ -17,7 +17,7 @@ export interface Article {
 }
 
 export interface HeroImage { id: number; url: string; position: number; active: boolean }
-export interface OrderItem { id: number; productId?: number; name: string; quantity: number; price: number }
+export interface OrderItem { id: number; productId?: number; name: string; quantity: number; price: number; packagingId?: string | null; packagingName?: string | null; packagingPrice?: number }
 export interface Order {
   id: number;
   total: number;
@@ -60,7 +60,9 @@ const defaultArticles: Article[] = [
 function load<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
+    const data = raw ? JSON.parse(raw) : fallback;
+    if (Array.isArray(fallback) && !Array.isArray(data)) return fallback;
+    return data;
   } catch {
     return fallback;
   }
@@ -71,8 +73,21 @@ function save(key: string, value: unknown) {
 }
 
 export function useStore() {
-  const [products, setProducts] = useState<Product[]>(() => load('candy_products', defaultProducts));
-  const [categories, setCategories] = useState<Category[]>(() => load('candy_categories', defaultCategories));
+  const [products, setProducts] = useState<Product[]>(() => {
+    const loadedRaw = load('candy_products', defaultProducts);
+    const loaded = Array.isArray(loadedRaw) ? loadedRaw : defaultProducts;
+    return loaded as Product[];
+  });
+  const [categories, setCategories] = useState<Category[]>(() => {
+    const loadedRaw = load('candy_categories', defaultCategories);
+    const loaded = Array.isArray(loadedRaw) ? loadedRaw : defaultCategories;
+    const map = new Map<string, Category>();
+    for (const c of loaded as Category[]) map.set(c.id, c);
+    for (const c of defaultCategories) {
+      if (!map.has(c.id)) map.set(c.id, c);
+    }
+    return Array.from(map.values());
+  });
   const [articles, setArticles] = useState<Article[]>(() => {
     const loaded = load('candy_articles', defaultArticles);
     return loaded.map(a => a.slug ? a : { ...a, slug: `article-${a.id}` });
@@ -81,6 +96,11 @@ export function useStore() {
     load('candy_hero_images', [{ id: 1, url: '/images/hero-sweets.jpg', position: 0, active: true }])
   );
   const [badges, setBadges] = useState<Badge[]>(() => load('candy_badges', defaultBadges));
+  const [packagingOptions, setPackagingOptions] = useState<PackagingOption[]>(() => {
+    const loadedRaw = load('candy_packaging', defaultPackagingOptions);
+    const loaded = Array.isArray(loadedRaw) ? loadedRaw : defaultPackagingOptions;
+    return loaded as PackagingOption[];
+  });
   const [orders, setOrders] = useState<Order[]>(() => load('candy_orders', []));
   const [footer, setFooter] = useState<FooterData>(() => load('candy_footer', footerData));
   const [apiReady, setApiReady] = useState<boolean>(false);
@@ -91,6 +111,7 @@ export function useStore() {
   useEffect(() => save('candy_articles', articles), [articles]);
   useEffect(() => save('candy_hero_images', heroImages), [heroImages]);
   useEffect(() => save('candy_badges', badges), [badges]);
+  useEffect(() => save('candy_packaging', packagingOptions), [packagingOptions]);
   useEffect(() => save('candy_orders', orders), [orders]);
   useEffect(() => save('candy_footer', footer), [footer]);
 
@@ -98,17 +119,18 @@ export function useStore() {
     let active = true;
     (async () => {
       try {
-        const [cats, prods, arts, prms, hImgs, ftr] = await Promise.all([
+        const [cats, prods, arts, prms, hImgs, ftr, packs] = await Promise.all([
           api.getCategories(),
           api.getProducts(),
           api.getArticles(),
           api.getPromos().catch(() => []),
           api.getHeroImages().catch(() => null),
           api.getFooter().catch(() => null),
+          api.getPackagingOptions().catch(() => null),
         ]);
         if (!active) return;
-        setCategories(cats as Category[]);
-        setProducts(prods as Product[]);
+        if (Array.isArray(cats)) setCategories(cats as Category[]);
+        if (Array.isArray(prods)) setProducts(prods as Product[]);
         setArticles(arts as Article[]);
         setPromos(prms as Promo[]);
         if (Array.isArray(hImgs) && hImgs.length) {
@@ -116,6 +138,9 @@ export function useStore() {
         }
         if (ftr) {
           setFooter(ftr as FooterData);
+        }
+        if (Array.isArray(packs)) {
+          setPackagingOptions(packs as PackagingOption[]);
         }
         setApiReady(true);
       } catch {
@@ -184,6 +209,29 @@ export function useStore() {
       await api.deleteCategory(id);
     }
     setCategories(prev => prev.filter(c => c.id !== id));
+  }, [apiReady]);
+
+  // Packaging
+  const addPackagingOption = useCallback(async (p: PackagingOption) => {
+    if (apiReady) {
+      await api.addPackagingOption(p);
+    }
+    setPackagingOptions(prev => {
+      if (prev.find(x => x.id === p.id)) return prev;
+      return [...prev, p];
+    });
+  }, [apiReady]);
+  const updatePackagingOption = useCallback(async (id: string, data: Partial<PackagingOption>) => {
+    if (apiReady) {
+      await api.updatePackagingOption(id, data);
+    }
+    setPackagingOptions(prev => prev.map(p => p.id === id ? { ...p, ...data } : p));
+  }, [apiReady]);
+  const deletePackagingOption = useCallback(async (id: string) => {
+    if (apiReady) {
+      await api.deletePackagingOption(id);
+    }
+    setPackagingOptions(prev => prev.filter(p => p.id !== id));
   }, [apiReady]);
 
   // Articles
@@ -310,9 +358,10 @@ export function useStore() {
   }, [apiReady]);
 
   return {
-    products, categories, articles, promos, heroImages, badges, orders, footer,
+    products, categories, packagingOptions, articles, promos, heroImages, badges, orders, footer,
     addProduct, updateProduct, deleteProduct,
     addCategory, updateCategory, deleteCategory,
+    addPackagingOption, updatePackagingOption, deletePackagingOption,
     addArticle, updateArticle, deleteArticle,
     addPromo, updatePromo, deletePromo,
     addHeroImage, updateHeroImage, deleteHeroImage,
