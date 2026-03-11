@@ -41,6 +41,77 @@ const Index = () => {
     });
   }, [cart]);
 
+  useEffect(() => {
+    const setMeta = (attr: 'name' | 'property', key: string, content: string) => {
+      let el = document.querySelector(`meta[${attr}="${key}"]`) as HTMLMetaElement | null;
+      if (!el) {
+        el = document.createElement('meta');
+        el.setAttribute(attr, key);
+        document.head.appendChild(el);
+      }
+      el.content = content;
+    };
+    const setLink = (rel: string, href: string) => {
+      let el = document.querySelector(`link[rel="${rel}"]`) as HTMLLinkElement | null;
+      if (!el) {
+        el = document.createElement('link');
+        el.rel = rel;
+        document.head.appendChild(el);
+      }
+      el.href = href;
+    };
+    const setJsonLd = (id: string, data: unknown) => {
+      let el = document.getElementById(id) as HTMLScriptElement | null;
+      if (!el) {
+        el = document.createElement('script');
+        el.type = 'application/ld+json';
+        el.id = id;
+        document.head.appendChild(el);
+      }
+      el.textContent = JSON.stringify(data);
+    };
+    const title = 'Конфетная Страна — натуральные сладости для детей';
+    const description = 'Натуральные конфеты, шоколад, трюфели и подарочные наборы для детей. Доставка по России и скидка 15% по промокоду SWEET15.';
+    const url = `${window.location.origin}/`;
+    const image = `${window.location.origin}/images/hero-sweets.jpg`;
+    document.title = title;
+    setMeta('name', 'description', description);
+    setMeta('name', 'robots', 'index, follow');
+    setMeta('property', 'og:title', title);
+    setMeta('property', 'og:description', description);
+    setMeta('property', 'og:type', 'website');
+    setMeta('property', 'og:site_name', 'Конфетная Страна');
+    setMeta('property', 'og:url', url);
+    setMeta('property', 'og:image', image);
+    setMeta('property', 'og:image:alt', 'Сладости Конфетной Страны');
+    setMeta('name', 'twitter:card', 'summary_large_image');
+    setMeta('name', 'twitter:title', title);
+    setMeta('name', 'twitter:description', description);
+    setMeta('name', 'twitter:image', image);
+    setLink('canonical', url);
+    setJsonLd('ld-json-home', {
+      '@context': 'https://schema.org',
+      '@graph': [
+        {
+          '@type': 'Organization',
+          name: 'Конфетная Страна',
+          url,
+          logo: image,
+        },
+        {
+          '@type': 'WebSite',
+          name: 'Конфетная Страна',
+          url,
+          potentialAction: {
+            '@type': 'SearchAction',
+            target: `${url}catalog?search={search_term_string}`,
+            'query-input': 'required name=search_term_string',
+          },
+        },
+      ],
+    });
+  }, []);
+
   const handlePromoApply = useCallback(() => {
     cart.applyPromo('SWEET15');
     cart.setIsCartOpen(true);

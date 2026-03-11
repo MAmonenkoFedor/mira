@@ -94,20 +94,20 @@ export const footerData: FooterData = {
 };
 
 export const categories: Category[] = [
-  { id: 'gift', name: 'Подарочные наборы', emoji: '🎁', color: 'candy-pink', group: 'set' },
-  { id: 'chocolate', name: 'Шоколад', emoji: '🍫', color: 'candy-mint', group: 'set' },
-  { id: 'truffles', name: 'Трюфели', emoji: '🟤', color: 'candy-lavender', group: 'set' },
-  { id: 'asian', name: 'Азиатские сладости', emoji: '🍡', color: 'candy-blue', group: 'set' },
-  { id: 'cookies', name: 'Печенье и вафли', emoji: '🍪', color: 'candy-banana', group: 'set' },
-  { id: 'lollipops', name: 'Леденцы', emoji: '🍭', color: 'candy-pink', group: 'single' },
-  { id: 'sour_lollipops', name: 'Кислые леденцы', emoji: '🍋', color: 'candy-mint', group: 'single' },
-  { id: 'chewy_candies', name: 'Жевательные конфеты', emoji: '🍬', color: 'candy-lavender', group: 'single' },
-  { id: 'marmalade_jelly', name: 'Мармелад и желе', emoji: '🍓', color: 'candy-blue', group: 'single' },
-  { id: 'marshmallow', name: 'Маршмеллоу', emoji: '☁️', color: 'candy-banana', group: 'single' },
-  { id: 'snacks', name: 'Снеки', emoji: '🥨', color: 'candy-mint', group: 'single' },
-  { id: 'chewing_gum', name: 'Жевательная резинка', emoji: '🫧', color: 'candy-blue', group: 'single' },
-  { id: 'refreshing_candies', name: 'Освежающие конфеты', emoji: '🌿', color: 'candy-lavender', group: 'single' },
-  { id: 'unique_sweets', name: 'Уникальные сладости', emoji: '✨', color: 'candy-pink', group: 'single' },
+  { id: 'gift', name: 'Подарочные наборы', emoji: '🎁', color: 'candy-pink', group: 'set', showOnHome: true },
+  { id: 'chocolate', name: 'Шоколад', emoji: '🍫', color: 'candy-mint', group: 'set', showOnHome: true },
+  { id: 'truffles', name: 'Трюфели', emoji: '🟤', color: 'candy-lavender', group: 'set', showOnHome: true },
+  { id: 'asian', name: 'Азиатские сладости', emoji: '🍡', color: 'candy-blue', group: 'set', showOnHome: false },
+  { id: 'cookies', name: 'Печенье и вафли', emoji: '🍪', color: 'candy-banana', group: 'set', showOnHome: true },
+  { id: 'lollipops', name: 'Леденцы', emoji: '🍭', color: 'candy-pink', group: 'single', showOnHome: true },
+  { id: 'sour_lollipops', name: 'Кислые леденцы', emoji: '🍋', color: 'candy-mint', group: 'single', showOnHome: false },
+  { id: 'chewy_candies', name: 'Жевательные конфеты', emoji: '🍬', color: 'candy-lavender', group: 'single', showOnHome: false },
+  { id: 'marmalade_jelly', name: 'Мармелад и желе', emoji: '🍓', color: 'candy-blue', group: 'single', showOnHome: true },
+  { id: 'marshmallow', name: 'Маршмеллоу', emoji: '☁️', color: 'candy-banana', group: 'single', showOnHome: true },
+  { id: 'snacks', name: 'Снеки', emoji: '🥨', color: 'candy-mint', group: 'single', showOnHome: false },
+  { id: 'chewing_gum', name: 'Жевательная резинка', emoji: '🫧', color: 'candy-blue', group: 'single', showOnHome: false },
+  { id: 'refreshing_candies', name: 'Освежающие конфеты', emoji: '🌿', color: 'candy-lavender', group: 'single', showOnHome: false },
+  { id: 'unique_sweets', name: 'Уникальные сладости', emoji: '✨', color: 'candy-pink', group: 'single', showOnHome: true },
 ];
 
 export const badges: Badge[] = [

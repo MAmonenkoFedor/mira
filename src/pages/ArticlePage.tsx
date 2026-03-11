@@ -22,6 +22,92 @@ export default function ArticlePage() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   }, [slug]);
+  useEffect(() => {
+    if (!article) return;
+    const setMeta = (attr: 'name' | 'property', key: string, content: string) => {
+      let el = document.querySelector(`meta[${attr}="${key}"]`) as HTMLMetaElement | null;
+      if (!el) {
+        el = document.createElement('meta');
+        el.setAttribute(attr, key);
+        document.head.appendChild(el);
+      }
+      el.content = content;
+    };
+    const setLink = (rel: string, href: string) => {
+      let el = document.querySelector(`link[rel="${rel}"]`) as HTMLLinkElement | null;
+      if (!el) {
+        el = document.createElement('link');
+        el.rel = rel;
+        document.head.appendChild(el);
+      }
+      el.href = href;
+    };
+    const setJsonLd = (id: string, data: unknown) => {
+      let el = document.getElementById(id) as HTMLScriptElement | null;
+      if (!el) {
+        el = document.createElement('script');
+        el.type = 'application/ld+json';
+        el.id = id;
+        document.head.appendChild(el);
+      }
+      el.textContent = JSON.stringify(data);
+    };
+    const toAbs = (url: string) => {
+      if (url.startsWith('http') || url.startsWith('data:')) return url;
+      return `${window.location.origin}${url.startsWith('/') ? '' : '/'}${url}`;
+    };
+    const title = `${article.title} — Конфетная Страна`;
+    const baseDescription = (article.excerpt || article.content || '').trim();
+    const description = baseDescription ? baseDescription.slice(0, 160) : 'Статья о сладостях, подарочных наборах и новинках магазина.';
+    const url = `${window.location.origin}/articles/${article.slug}`;
+    const image = article.image ? toAbs(article.image) : `${window.location.origin}/images/hero-sweets.jpg`;
+    document.title = title;
+    setMeta('name', 'description', description);
+    setMeta('name', 'robots', 'index, follow');
+    setMeta('property', 'og:title', title);
+    setMeta('property', 'og:description', description);
+    setMeta('property', 'og:type', 'article');
+    setMeta('property', 'og:site_name', 'Конфетная Страна');
+    setMeta('property', 'og:url', url);
+    setMeta('property', 'og:image', image);
+    setMeta('property', 'og:image:alt', article.title);
+    setMeta('name', 'twitter:card', 'summary_large_image');
+    setMeta('name', 'twitter:title', title);
+    setMeta('name', 'twitter:description', description);
+    setMeta('name', 'twitter:image', image);
+    setLink('canonical', url);
+    setJsonLd('ld-json-article', {
+      '@context': 'https://schema.org',
+      '@graph': [
+        {
+          '@type': 'Article',
+          headline: article.title,
+          description,
+          image: [image],
+          mainEntityOfPage: url,
+          author: { '@type': 'Organization', name: 'Конфетная Страна' },
+          publisher: { '@type': 'Organization', name: 'Конфетная Страна' },
+        },
+        {
+          '@type': 'BreadcrumbList',
+          itemListElement: [
+            {
+              '@type': 'ListItem',
+              position: 1,
+              name: 'Главная',
+              item: `${window.location.origin}/`,
+            },
+            {
+              '@type': 'ListItem',
+              position: 2,
+              name: article.title,
+              item: url,
+            },
+          ],
+        },
+      ],
+    });
+  }, [article]);
 
   if (!article) {
     return (
@@ -35,10 +121,6 @@ export default function ArticlePage() {
 
   return (
     <>
-      <head>
-        <title>{article.title} — Конфетная Страна</title>
-        <meta name="description" content={article.excerpt.slice(0, 155)} />
-      </head>
       <div className="min-h-screen bg-background">
         <Header cartCount={cart.count} onCartClick={() => cart.setIsCartOpen(true)} />
 

@@ -247,13 +247,130 @@ export default function Admin() {
 function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
   const [editing, setEditing] = useState<Product | null>(null);
   const [creating, setCreating] = useState(false);
+  const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [badgeFilter, setBadgeFilter] = useState('all');
+  const [sort, setSort] = useState<'popular' | 'name' | 'price_asc' | 'price_desc'>('popular');
+  const [showInactive, setShowInactive] = useState(false);
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
+
+  const categoriesSorted = useMemo(() => {
+    return [...store.categories].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  }, [store.categories]);
+
+  const getCategories = (p: Product) => {
+    const anyP = p as any;
+    const list: string[] = Array.isArray(anyP?.categories) && anyP.categories.length
+      ? anyP.categories.filter(Boolean).map((x: unknown) => String(x))
+      : (anyP?.category ? [String(anyP.category)] : []);
+    return list;
+  };
+
+  const filtered = useMemo(() => {
+    let list = [...store.products];
+
+    if (!showInactive) {
+      list = list.filter(p => p.active !== false);
+    }
+
+    if (categoryFilter !== 'all') {
+      list = list.filter(p => getCategories(p).some(c => c === categoryFilter || c.startsWith(`${categoryFilter}/`)));
+    }
+
+    if (badgeFilter !== 'all') {
+      list = list.filter(p => p.badge === badgeFilter);
+    }
+
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter(p => {
+        const sku = (p.sku || '').toLowerCase();
+        return p.name.toLowerCase().includes(q) || String(p.id).includes(q) || sku.includes(q);
+      });
+    }
+
+    switch (sort) {
+      case 'name':
+        list.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+        break;
+      case 'price_asc':
+        list.sort((a, b) => a.price - b.price);
+        break;
+      case 'price_desc':
+        list.sort((a, b) => b.price - a.price);
+        break;
+      default:
+        list.sort((a, b) => b.popularity - a.popularity);
+    }
+
+    return list;
+  }, [store.products, showInactive, categoryFilter, badgeFilter, search, sort]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, categoryFilter, badgeFilter, sort, showInactive, store.products.length]);
+
+  const visible = filtered.slice(0, page * pageSize);
 
   return (
     <div>
-      <button onClick={() => { setCreating(true); setEditing(null); }}
-        className="mb-4 flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-primary text-primary-foreground text-sm font-medium hover:scale-[1.02] active:scale-95 transition-transform">
-        <Plus size={16} /> Добавить товар
-      </button>
+      <div className="sticky top-16 z-20 mb-4 bg-muted/30 backdrop-blur-md rounded-2xl px-4 py-3 border border-border/40 shadow-sm">
+        <div className="flex flex-wrap gap-3 items-end">
+          <div className="flex-1 min-w-[220px]">
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Поиск</label>
+            <input value={search} onChange={e => setSearch(e.target.value)} className="admin-input" placeholder="Название, ID, SKU" />
+          </div>
+          <div className="min-w-[180px]">
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Категория</label>
+            <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="admin-input">
+              <option value="all">Все</option>
+              {categoriesSorted.map(c => (
+                <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="min-w-[160px]">
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Бейдж</label>
+            <select value={badgeFilter} onChange={e => setBadgeFilter(e.target.value)} className="admin-input">
+              <option value="all">Все</option>
+              <option value="">Без бейджа</option>
+              {store.badges.map(b => (
+                <option key={b.id} value={b.id}>{b.label}{b.active ? '' : ' (выключен)'}</option>
+              ))}
+            </select>
+          </div>
+          <div className="min-w-[160px]">
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Сортировка</label>
+            <select value={sort} onChange={e => setSort(e.target.value as typeof sort)} className="admin-input">
+              <option value="popular">По популярности</option>
+              <option value="name">По названию</option>
+              <option value="price_asc">Сначала дешевле</option>
+              <option value="price_desc">Сначала дороже</option>
+            </select>
+          </div>
+          <div className="min-w-[160px]">
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Статус</label>
+            <select value={showInactive ? 'all' : 'active'} onChange={e => setShowInactive(e.target.value === 'all')} className="admin-input">
+              <option value="active">В продаже</option>
+              <option value="all">Все</option>
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => { setSearch(''); setCategoryFilter('all'); setBadgeFilter('all'); setSort('popular'); setShowInactive(false); }}
+              className="h-10 px-3 rounded-xl text-sm border border-border text-muted-foreground hover:bg-muted transition-colors flex items-center gap-2">
+              <RotateCcw size={14} /> Сбросить
+            </button>
+            <button onClick={() => { setCreating(true); setEditing(null); }}
+              className="h-10 px-4 rounded-2xl bg-primary text-primary-foreground text-sm font-medium hover:scale-[1.02] active:scale-95 transition-transform flex items-center gap-2">
+              <Plus size={16} /> Добавить товар
+            </button>
+          </div>
+        </div>
+        <div className="mt-2 text-xs text-muted-foreground">
+          Показано {visible.length} из {filtered.length}
+        </div>
+      </div>
 
       {(creating || editing) && (
         <ProductForm
@@ -277,12 +394,18 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
       )}
 
       <div className="grid gap-3">
-        {store.products.map(p => (
-          <div key={p.id} className="flex items-center gap-4 bg-card rounded-2xl p-4 border border-border/40 shadow-sm">
+        {visible.map(p => (
+          <div key={p.id} onClick={() => { setEditing(p); setCreating(false); }}
+            className={`flex items-center gap-4 bg-card rounded-2xl p-4 border border-border/40 shadow-sm cursor-pointer hover:border-primary/40 transition-colors ${
+              p.active === false ? 'opacity-70' : ''
+            }`}>
             <img src={resolveMediaUrl(p.images?.[0] || p.image)} alt={p.name} className="w-14 h-14 rounded-xl object-cover bg-muted" loading="lazy" />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <span className="font-display font-semibold text-sm truncate">{p.name}</span>
+                {p.active === false && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-destructive/10 text-destructive">снят</span>
+                )}
                 {p.badge && (() => {
                   const badge = store.badges.find(b => b.id === p.badge);
                   if (!badge) return null;
@@ -295,22 +418,20 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
               </div>
               <div className="text-xs text-muted-foreground">
                 {(() => {
-                  const anyP = p as any;
-                  const list: string[] = Array.isArray(anyP?.categories) && anyP.categories.length
-                    ? anyP.categories.filter(Boolean).map((x: unknown) => String(x))
-                    : (anyP?.category ? [String(anyP.category)] : []);
+                  const list = getCategories(p);
                   const primary = list[0] ?? '';
                   const label = primary ? (store.categories.find(c => c.id === primary)?.name || primary) : '—';
-                  return `${p.price} ₽ · ${label}`;
+                  return `${p.price} ₽ · ${label} · id: ${p.id}${p.sku ? ` · ${p.sku}` : ''}`;
                 })()}
               </div>
             </div>
             <div className="flex gap-1.5">
-              <button onClick={() => { setEditing(p); setCreating(false); }}
+              <button onClick={(e) => { e.stopPropagation(); setEditing(p); setCreating(false); }}
                 className="p-2 rounded-xl hover:bg-muted text-muted-foreground hover:text-primary transition-colors">
                 <Pencil size={15} />
               </button>
-              <button onClick={async () => {
+              <button onClick={async (e) => {
+                e.stopPropagation();
                 try {
                   await store.deleteProduct(p.id);
                   toast.success('Удалено');
@@ -327,6 +448,17 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
           </div>
         ))}
       </div>
+      {filtered.length === 0 && (
+        <div className="text-sm text-muted-foreground py-10 text-center">Ничего не найдено</div>
+      )}
+      {filtered.length > visible.length && (
+        <div className="flex justify-center mt-4">
+          <button onClick={() => setPage(p => p + 1)}
+            className="px-4 py-2 rounded-xl text-sm border border-border text-muted-foreground hover:bg-muted transition-colors">
+            Показать ещё
+          </button>
+        </div>
+      )}
     </div>
   );
 }

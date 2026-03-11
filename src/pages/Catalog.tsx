@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { toast } from 'sonner';
 import Header from '@/components/candy-store/Header';
 import Products from '@/components/candy-store/Products';
@@ -20,6 +20,63 @@ const Catalog = () => {
     cart.addItem(product, qty, packagingId);
     toast.success('Добавлено!', { description: product.name, duration: 2000 });
   }, [cart]);
+
+  useEffect(() => {
+    const setMeta = (attr: 'name' | 'property', key: string, content: string) => {
+      let el = document.querySelector(`meta[${attr}="${key}"]`) as HTMLMetaElement | null;
+      if (!el) {
+        el = document.createElement('meta');
+        el.setAttribute(attr, key);
+        document.head.appendChild(el);
+      }
+      el.content = content;
+    };
+    const setLink = (rel: string, href: string) => {
+      let el = document.querySelector(`link[rel="${rel}"]`) as HTMLLinkElement | null;
+      if (!el) {
+        el = document.createElement('link');
+        el.rel = rel;
+        document.head.appendChild(el);
+      }
+      el.href = href;
+    };
+    const setJsonLd = (id: string, data: unknown) => {
+      let el = document.getElementById(id) as HTMLScriptElement | null;
+      if (!el) {
+        el = document.createElement('script');
+        el.type = 'application/ld+json';
+        el.id = id;
+        document.head.appendChild(el);
+      }
+      el.textContent = JSON.stringify(data);
+    };
+    const title = 'Каталог сладостей — Конфетная Страна';
+    const description = 'Полный каталог сладостей: подарочные наборы и штучные товары. Выбирайте по категориям и оформляйте заказ онлайн.';
+    const url = `${window.location.origin}/catalog`;
+    const image = `${window.location.origin}/images/hero-sweets.jpg`;
+    document.title = title;
+    setMeta('name', 'description', description);
+    setMeta('name', 'robots', 'index, follow');
+    setMeta('property', 'og:title', title);
+    setMeta('property', 'og:description', description);
+    setMeta('property', 'og:type', 'website');
+    setMeta('property', 'og:site_name', 'Конфетная Страна');
+    setMeta('property', 'og:url', url);
+    setMeta('property', 'og:image', image);
+    setMeta('property', 'og:image:alt', 'Сладости Конфетной Страны');
+    setMeta('name', 'twitter:card', 'summary_large_image');
+    setMeta('name', 'twitter:title', title);
+    setMeta('name', 'twitter:description', description);
+    setMeta('name', 'twitter:image', image);
+    setLink('canonical', url);
+    setJsonLd('ld-json-catalog', {
+      '@context': 'https://schema.org',
+      '@type': 'CollectionPage',
+      name: title,
+      description,
+      url,
+    });
+  }, []);
 
   type Node = { category: Category; children: Node[] };
 
