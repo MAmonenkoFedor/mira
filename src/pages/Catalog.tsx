@@ -78,10 +78,28 @@ const Catalog = () => {
     });
   }, []);
 
+  const productCategoryIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of products) {
+      if (p.active === false) continue;
+      const anyP = p as any;
+      const ids: string[] = Array.isArray(anyP?.categories) && anyP.categories.length
+        ? anyP.categories.filter(Boolean).map((x: unknown) => String(x))
+        : (anyP?.category ? [String(anyP.category)] : []);
+      for (const id of ids) {
+        const parts = id.split('/');
+        for (let i = 0; i < parts.length; i += 1) {
+          set.add(parts.slice(0, i + 1).join('/'));
+        }
+      }
+    }
+    return set;
+  }, [products]);
+
   type Node = { category: Category; children: Node[] };
 
   const tree = useMemo(() => {
-    const list = categories.filter(c => Boolean(c?.id));
+    const list = categories.filter(c => Boolean(c?.id) && productCategoryIds.has(c.id));
     const map = new Map<string, Node>();
 
     const getNode = (c: Category) => {
@@ -113,7 +131,7 @@ const Catalog = () => {
     };
     sort(roots);
     return roots;
-  }, [categories]);
+  }, [categories, productCategoryIds]);
 
   const selectCategory = useCallback((id: string | null, toggle = true) => {
     setActiveCategory(prev => (toggle && prev === id ? null : id));

@@ -118,10 +118,29 @@ const Index = () => {
     toast.success('Промокод SWEET15 применён!');
   }, [cart]);
 
+  const productCategoryIds = useMemo(() => {
+    const set = new Set<string>();
+    const list = store.products || [];
+    for (const p of list) {
+      if (p.active === false) continue;
+      const anyP = p as any;
+      const ids: string[] = Array.isArray(anyP?.categories) && anyP.categories.length
+        ? anyP.categories.filter(Boolean).map((x: unknown) => String(x))
+        : (anyP?.category ? [String(anyP.category)] : []);
+      for (const id of ids) {
+        const parts = id.split('/');
+        for (let i = 0; i < parts.length; i += 1) {
+          set.add(parts.slice(0, i + 1).join('/'));
+        }
+      }
+    }
+    return set;
+  }, [store.products]);
+
   const homeCategories = useMemo(() => {
     const list = store.categories || [];
-    return list.filter(c => (c.showOnHome ?? (!c.id.includes('/') && c.id !== 'packaging')));
-  }, [store.categories]);
+    return list.filter(c => (c.showOnHome ?? (!c.id.includes('/') && c.id !== 'packaging')) && productCategoryIds.has(c.id));
+  }, [store.categories, productCategoryIds]);
 
   return (
     <div ref={revealRef} className="min-h-screen">
