@@ -70,8 +70,8 @@ const Index = () => {
       }
       el.textContent = JSON.stringify(data);
     };
-    const title = 'Конфетная Страна — натуральные сладости для детей';
-    const description = 'Натуральные конфеты, шоколад, трюфели и подарочные наборы для детей. Доставка по России и скидка 15% по промокоду SWEET15.';
+    const title = 'МираВкус — Азиатские сладости';
+    const description = 'Премиальные азиатские сладости, подарочные наборы и трюфели. Доставка по России.';
     const url = `${window.location.origin}/`;
     const image = `${window.location.origin}/images/hero-sweets.jpg`;
     document.title = title;
@@ -80,7 +80,7 @@ const Index = () => {
     setMeta('property', 'og:title', title);
     setMeta('property', 'og:description', description);
     setMeta('property', 'og:type', 'website');
-    setMeta('property', 'og:site_name', 'Конфетная Страна');
+    setMeta('property', 'og:site_name', 'МираВкус');
     setMeta('property', 'og:url', url);
     setMeta('property', 'og:image', image);
     setMeta('property', 'og:image:alt', 'Сладости Конфетной Страны');
@@ -94,13 +94,13 @@ const Index = () => {
       '@graph': [
         {
           '@type': 'Organization',
-          name: 'Конфетная Страна',
+          name: 'МираВкус',
           url,
           logo: image,
         },
         {
           '@type': 'WebSite',
-          name: 'Конфетная Страна',
+          name: 'МираВкус',
           url,
           potentialAction: {
             '@type': 'SearchAction',
