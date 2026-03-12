@@ -218,13 +218,13 @@ export default function ProductPage() {
                   </div>
                 )}
 
-                <div className="relative rounded-2xl overflow-hidden">
+                <div className="relative rounded-2xl overflow-hidden bg-muted/20">
                   {slides.map((url: string, i: number) => (
                     <img
                       key={url + i}
                       src={url}
                       alt={product.name}
-                      className={`w-full aspect-[3/4] max-h-[560px] object-cover transition-opacity duration-700 ${i === idx ? 'opacity-100' : 'opacity-0 absolute inset-0'}`}
+                      className={`w-full aspect-[3/4] max-h-[560px] object-contain transition-opacity duration-700 ${i === idx ? 'opacity-100' : 'opacity-0 absolute inset-0'}`}
                     />
                   ))}
                   {slides.length > 1 && (
@@ -400,7 +400,7 @@ export default function ProductPage() {
                 }}
                 className="flex-1 py-3.5 rounded-full bg-primary text-primary-foreground font-display font-semibold hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200 shadow-soft"
               >
-                Добавить — {lineTotal} ₽
+                Заказать
               </button>
             </div>
           </div>
