@@ -149,7 +149,7 @@ const FooterSchema = z.object({
 });
 const defaultFooter = {
   brandEmoji: "🍬",
-  brandName: "Конфетная Страна",
+  brandName: "МираВкус",
   description: "Интернет-магазин натуральных сладостей для детей. Только качественные ингредиенты и ручная работа.",
   deliveryTitle: "Доставка и оплата",
   deliveryItems: [
@@ -163,7 +163,7 @@ const defaultFooter = {
   email: "✉️ hello@candyland.ru",
   address: "📍 Москва, ул. Сладкая, 15",
   socialItems: ["📱 Telegram", "📷 Instagram", "💬 VK"],
-  copyright: "© 2026 Конфетная Страна. Все права защищены.",
+  copyright: "© 2026 МираВкус. Все права защищены.",
 };
 
 app.post("/api/auth/login", rateLimitMiddleware(10, 15 * 60 * 1000), async (req, res) => {

@@ -50,7 +50,7 @@ const Catalog = () => {
       }
       el.textContent = JSON.stringify(data);
     };
-    const title = 'Каталог сладостей — Конфетная Страна';
+    const title = 'Каталог сладостей — МираВкус';
     const description = 'Полный каталог сладостей: подарочные наборы и штучные товары. Выбирайте по категориям и оформляйте заказ онлайн.';
     const url = `${window.location.origin}/catalog`;
     const image = `${window.location.origin}/images/hero-sweets.jpg`;
@@ -60,10 +60,10 @@ const Catalog = () => {
     setMeta('property', 'og:title', title);
     setMeta('property', 'og:description', description);
     setMeta('property', 'og:type', 'website');
-    setMeta('property', 'og:site_name', 'Конфетная Страна');
+    setMeta('property', 'og:site_name', 'МираВкус');
     setMeta('property', 'og:url', url);
     setMeta('property', 'og:image', image);
-    setMeta('property', 'og:image:alt', 'Сладости Конфетной Страны');
+    setMeta('property', 'og:image:alt', 'Сладости МираВкуса');
     setMeta('name', 'twitter:card', 'summary_large_image');
     setMeta('name', 'twitter:title', title);
     setMeta('name', 'twitter:description', description);

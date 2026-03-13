@@ -114,7 +114,7 @@ export default function ProductPage() {
       if (url.startsWith('http') || url.startsWith('data:')) return url;
       return `${window.location.origin}${url.startsWith('/') ? '' : '/'}${url}`;
     };
-    const title = `${product.name} — Конфетная Страна`;
+    const title = `${product.name} — МираВкус`;
     const description = product.description?.slice(0, 160) || 'Детские сладости с доставкой по России.';
     const url = `${window.location.origin}/product/${product.id}`;
     const image = slides[0] ? toAbs(slides[0]) : `${window.location.origin}/images/hero-sweets.jpg`;
@@ -124,7 +124,7 @@ export default function ProductPage() {
     setMeta('property', 'og:title', title);
     setMeta('property', 'og:description', description);
     setMeta('property', 'og:type', 'product');
-    setMeta('property', 'og:site_name', 'Конфетная Страна');
+    setMeta('property', 'og:site_name', 'МираВкус');
     setMeta('property', 'og:url', url);
     setMeta('property', 'og:image', image);
     setMeta('property', 'og:image:alt', product.name);
@@ -142,7 +142,7 @@ export default function ProductPage() {
           image: [image],
           description: product.description,
           sku: product.sku || undefined,
-          brand: { '@type': 'Brand', name: 'Конфетная Страна' },
+          brand: { '@type': 'Brand', name: 'МираВкус' },
           offers: {
             '@type': 'Offer',
             priceCurrency: 'RUB',

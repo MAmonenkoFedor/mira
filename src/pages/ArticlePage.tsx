@@ -56,7 +56,7 @@ export default function ArticlePage() {
       if (url.startsWith('http') || url.startsWith('data:')) return url;
       return `${window.location.origin}${url.startsWith('/') ? '' : '/'}${url}`;
     };
-    const title = `${article.title} — Конфетная Страна`;
+    const title = `${article.title} — МираВкус`;
     const baseDescription = (article.excerpt || article.content || '').trim();
     const description = baseDescription ? baseDescription.slice(0, 160) : 'Статья о сладостях, подарочных наборах и новинках магазина.';
     const url = `${window.location.origin}/articles/${article.slug}`;
@@ -67,7 +67,7 @@ export default function ArticlePage() {
     setMeta('property', 'og:title', title);
     setMeta('property', 'og:description', description);
     setMeta('property', 'og:type', 'article');
-    setMeta('property', 'og:site_name', 'Конфетная Страна');
+    setMeta('property', 'og:site_name', 'МираВкус');
     setMeta('property', 'og:url', url);
     setMeta('property', 'og:image', image);
     setMeta('property', 'og:image:alt', article.title);
@@ -85,8 +85,8 @@ export default function ArticlePage() {
           description,
           image: [image],
           mainEntityOfPage: url,
-          author: { '@type': 'Organization', name: 'Конфетная Страна' },
-          publisher: { '@type': 'Organization', name: 'Конфетная Страна' },
+          author: { '@type': 'Organization', name: 'МираВкус' },
+          publisher: { '@type': 'Organization', name: 'МираВкус' },
         },
         {
           '@type': 'BreadcrumbList',

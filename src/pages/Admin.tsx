@@ -2058,7 +2058,7 @@ function FooterTab({ store }: { store: ReturnType<typeof useStore> }) {
         <div>
           <label className="text-xs font-medium text-muted-foreground mb-1 block">Название магазина</label>
           <input value={form.brandName} onChange={e => set('brandName', e.target.value)} maxLength={60}
-            className="admin-input" placeholder="Конфетная Страна" />
+            className="admin-input" placeholder="МираВкус" />
         </div>
       </div>
 
@@ -2111,7 +2111,7 @@ function FooterTab({ store }: { store: ReturnType<typeof useStore> }) {
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Копирайт</label>
         <input value={form.copyright} onChange={e => set('copyright', e.target.value)} maxLength={120}
-          className="admin-input" placeholder="© 2026 Конфетная Страна. Все права защищены." />
+          className="admin-input" placeholder="© 2026 МираВкус. Все права защищены." />
       </div>
 
       <div className="flex justify-end">

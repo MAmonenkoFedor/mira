@@ -26,7 +26,7 @@ const NotFound = () => {
       }
       el.href = href;
     };
-    const title = 'Страница не найдена — Конфетная Страна';
+    const title = 'Страница не найдена — МираВкус';
     const description = 'Страница не найдена. Вернитесь на главную страницу магазина сладостей.';
     const url = `${window.location.origin}${location.pathname}`;
     document.title = title;

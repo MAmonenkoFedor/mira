@@ -58,7 +58,7 @@ export default function Header({ cartCount, onCartClick }: HeaderProps) {
           ) : (
             <span className="text-2xl">🍬</span>
           )}
-          <span>Конфетная Страна</span>
+          <span>МираВкус</span>
         </Link>
 
         <nav className="hidden md:flex items-center gap-6">

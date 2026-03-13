@@ -83,7 +83,7 @@ const Index = () => {
     setMeta('property', 'og:site_name', 'МираВкус');
     setMeta('property', 'og:url', url);
     setMeta('property', 'og:image', image);
-    setMeta('property', 'og:image:alt', 'Сладости Конфетной Страны');
+    setMeta('property', 'og:image:alt', 'Сладости МираВкуса');
     setMeta('name', 'twitter:card', 'summary_large_image');
     setMeta('name', 'twitter:title', title);
     setMeta('name', 'twitter:description', description);

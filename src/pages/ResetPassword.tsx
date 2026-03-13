@@ -37,7 +37,7 @@ export default function ResetPasswordPage() {
       }
       el.href = href;
     };
-    const title = 'Сброс пароля — Конфетная Страна';
+    const title = 'Сброс пароля — МираВкус';
     const description = 'Смена пароля для доступа к админ-панели.';
     const url = `${window.location.origin}/reset`;
     document.title = title;

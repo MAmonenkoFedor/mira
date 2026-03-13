@@ -27,7 +27,7 @@ export default function AdminGate() {
       }
       el.href = href;
     };
-    const title = 'Админ-панель — Конфетная Страна';
+    const title = 'Админ-панель — МираВкус';
     const description = 'Вход в административную панель магазина.';
     const url = `${window.location.origin}/admin`;
     document.title = title;
