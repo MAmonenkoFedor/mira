@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { getToken } from '@/lib/auth';
-import { products as defaultProducts, categories as defaultCategories, badges as defaultBadges, packagingOptions as defaultPackagingOptions, footerData, type FooterData, type Product, type Category, type Promo, type Badge, type PackagingOption } from './data';
+import { products as defaultProducts, categories as defaultCategories, badges as defaultBadges, packagingOptions as defaultPackagingOptions, footerData, type FooterData, type Product, type Category, type Promo, type Badge, type PackagingOption, type PromoBanner } from './data';
 
 export interface Article {
   id: number;
@@ -12,11 +12,14 @@ export interface Article {
   tag: string;
   readTime: string;
   image?: string;
+  images?: string[];
+  videoUrl?: string | null;
   slug: string;
   productId?: number;
+  categoryId?: string;
 }
 
-export interface HeroImage { id: number; url: string; position: number; active: boolean }
+export interface HeroImage { id: number; url: string; link?: string | null; position: number; active: boolean }
 export interface OrderItem { id: number; productId?: number; name: string; quantity: number; price: number; packagingId?: string | null; packagingName?: string | null; packagingPrice?: number }
 export interface Order {
   id: number;
@@ -95,6 +98,9 @@ export function useStore() {
   const [heroImages, setHeroImages] = useState<HeroImage[]>(() =>
     load('candy_hero_images', [{ id: 1, url: '/images/hero-sweets.jpg', position: 0, active: true }])
   );
+  const [promoBanners, setPromoBanners] = useState<PromoBanner[]>(() =>
+    load('candy_promo_banners', [])
+  );
   const [badges, setBadges] = useState<Badge[]>(() => load('candy_badges', defaultBadges));
   const [packagingOptions, setPackagingOptions] = useState<PackagingOption[]>(() => {
     const loadedRaw = load('candy_packaging', defaultPackagingOptions);
@@ -110,6 +116,7 @@ export function useStore() {
   useEffect(() => save('candy_categories', categories), [categories]);
   useEffect(() => save('candy_articles', articles), [articles]);
   useEffect(() => save('candy_hero_images', heroImages), [heroImages]);
+  useEffect(() => save('candy_promo_banners', promoBanners), [promoBanners]);
   useEffect(() => save('candy_badges', badges), [badges]);
   useEffect(() => save('candy_packaging', packagingOptions), [packagingOptions]);
   useEffect(() => save('candy_orders', orders), [orders]);
@@ -119,7 +126,7 @@ export function useStore() {
     let active = true;
     (async () => {
       try {
-        const [cats, prods, arts, prms, hImgs, ftr, packs] = await Promise.all([
+        const [cats, prods, arts, prms, hImgs, ftr, packs, prBanners] = await Promise.all([
           api.getCategories(),
           api.getProducts(),
           api.getArticles(),
@@ -127,6 +134,7 @@ export function useStore() {
           api.getHeroImages().catch(() => null),
           api.getFooter().catch(() => null),
           api.getPackagingOptions().catch(() => null),
+          api.getPromoBanners().catch(() => null),
         ]);
         if (!active) return;
         if (Array.isArray(cats)) setCategories(cats as Category[]);
@@ -135,6 +143,9 @@ export function useStore() {
         setPromos(prms as Promo[]);
         if (Array.isArray(hImgs) && hImgs.length) {
           setHeroImages(hImgs);
+        }
+        if (Array.isArray(prBanners)) {
+          setPromoBanners(prBanners);
         }
         if (ftr) {
           setFooter(ftr as FooterData);
@@ -267,14 +278,14 @@ export function useStore() {
   }, [apiReady]);
 
   // Hero images
-  const addHeroImage = useCallback(async (url: string) => {
+  const addHeroImage = useCallback(async (data: { url: string; link?: string | null; active?: boolean }) => {
     if (apiReady) {
-      const { id } = await api.addHeroImage({ url, position: heroImages.length }) as { id: number };
-      setHeroImages(prev => [...prev, { id, url, position: prev.length, active: true }]);
+      const { id } = await api.addHeroImage({ ...data, position: heroImages.length }) as { id: number };
+      setHeroImages(prev => [...prev, { id, url: data.url, link: data.link ?? null, position: prev.length, active: data.active ?? true }]);
     } else {
       setHeroImages(prev => {
         const id = prev.length ? Math.max(...prev.map(x => x.id)) + 1 : 1;
-        return [...prev, { id, url, position: prev.length, active: true }];
+        return [...prev, { id, url: data.url, link: data.link ?? null, position: prev.length, active: data.active ?? true }];
       });
     }
   }, [apiReady, heroImages.length]);
@@ -291,11 +302,36 @@ export function useStore() {
     setHeroImages(prev => prev.filter(h => h.id !== id).map((h,i)=> ({ ...h, position: i })));
   }, [apiReady]);
 
+  const addPromoBanner = useCallback(async (data: { url: string; link?: string | null; active?: boolean }) => {
+    if (apiReady) {
+      const { id } = await api.addPromoBanner({ ...data, position: promoBanners.length }) as { id: number };
+      setPromoBanners(prev => [...prev, { id, url: data.url, link: data.link ?? null, position: prev.length, active: data.active ?? true }]);
+    } else {
+      setPromoBanners(prev => {
+        const id = prev.length ? Math.max(...prev.map(x => x.id)) + 1 : 1;
+        return [...prev, { id, url: data.url, link: data.link ?? null, position: prev.length, active: data.active ?? true }];
+      });
+    }
+  }, [apiReady, promoBanners.length]);
+  const updatePromoBanner = useCallback(async (id: number, data: Partial<PromoBanner>) => {
+    if (apiReady) {
+      await api.updatePromoBanner(id, data);
+    }
+    setPromoBanners(prev => prev.map(h => h.id === id ? { ...h, ...data } : h).sort((a,b)=> a.position - b.position));
+  }, [apiReady]);
+  const deletePromoBanner = useCallback(async (id: number) => {
+    if (apiReady) {
+      await api.deletePromoBanner(id);
+    }
+    setPromoBanners(prev => prev.filter(h => h.id !== id).map((h,i)=> ({ ...h, position: i })));
+  }, [apiReady]);
+
   const resetToDefaults = useCallback(() => {
     setProducts(defaultProducts);
     setCategories(defaultCategories);
     setArticles(defaultArticles);
     setHeroImages([{ id: 1, url: '/images/hero-sweets.jpg', position: 0, active: true }]);
+    setPromoBanners([]);
     setBadges(defaultBadges);
     setOrders([]);
     setFooter(footerData);
@@ -358,13 +394,14 @@ export function useStore() {
   }, [apiReady]);
 
   return {
-    products, categories, packagingOptions, articles, promos, heroImages, badges, orders, footer,
+    products, categories, packagingOptions, articles, promos, heroImages, promoBanners, badges, orders, footer,
     addProduct, updateProduct, deleteProduct,
     addCategory, updateCategory, deleteCategory,
     addPackagingOption, updatePackagingOption, deletePackagingOption,
     addArticle, updateArticle, deleteArticle,
     addPromo, updatePromo, deletePromo,
     addHeroImage, updateHeroImage, deleteHeroImage,
+    addPromoBanner, updatePromoBanner, deletePromoBanner,
     addBadge, updateBadge, deleteBadge,
     updateOrder,
     updateFooter,

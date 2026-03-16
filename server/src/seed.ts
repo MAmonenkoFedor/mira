@@ -32,13 +32,15 @@ export async function seedIfEmpty(pool: Pool) {
   );
 
   await pool.query(
-    `insert into packaging_options(id,name,price,active) values
-    ('standard','Стандартная',0,true),
-    ('gift_wrap','Подарочная упаковка',149,true)
+    `insert into packaging_options(id,name,price,active,image,images) values
+    ('standard','Стандартная',0,true,'/images/gift-box.jpg',array['/images/gift-box.jpg','/images/hero-sweets.jpg']),
+    ('gift_wrap','Подарочная упаковка',149,true,'/images/gift-box.jpg',array['/images/gift-box.jpg','/images/hero-sweets.jpg'])
     on conflict(id) do update set
       name = excluded.name,
       price = excluded.price,
-      active = excluded.active`
+      active = excluded.active,
+      image = excluded.image,
+      images = excluded.images`
   );
 
   const { rows: prodCount } = await pool.query(`select count(*)::int as c from products`);

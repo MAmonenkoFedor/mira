@@ -17,8 +17,14 @@ export default function ProductCard({ product, onAdd }: ProductCardProps) {
   const navigate = useNavigate();
   const slides = useMemo(() => {
     const list = product.images && product.images.length ? product.images : [product.image];
-    return list.map((u) => resolveMediaUrl(u));
+    const imageUrls = list.map((u) => resolveMediaUrl(u));
+    const videoUrl = product.videoUrl ? resolveMediaUrl(product.videoUrl) : '';
+    if (videoUrl) {
+      return [{ type: 'video' as const, url: videoUrl }, ...imageUrls.map((url) => ({ type: 'image' as const, url }))];
+    }
+    return imageUrls.map((url) => ({ type: 'image' as const, url }));
   }, [product]);
+  const posterUrl = useMemo(() => resolveMediaUrl(product.image), [product.image]);
   const badge = useMemo(() => badges.find(b => b.id === product.badge && b.active), [badges, product.badge]);
   const activePackaging = useMemo(() => packagingOptions.filter(p => p.active), [packagingOptions]);
   const standardPackaging = useMemo(() => {
@@ -36,14 +42,28 @@ export default function ProductCard({ product, onAdd }: ProductCardProps) {
       onClick={() => navigate(`/product/${product.id}`)}
     >
       <div className="relative aspect-[3/4] overflow-hidden">
-        {slides.map((url, i) => (
-          <img
-            key={url + i}
-            src={url}
-            alt={product.name}
-            className={`absolute inset-0 w-full h-full object-cover transition-all duration-500 group-hover:scale-110 ${i === idx ? 'opacity-100' : 'opacity-0'}`}
-            loading="lazy"
-          />
+        {slides.map((slide, i) => (
+          slide.type === 'video' ? (
+            <video
+              key={slide.url + i}
+              src={slide.url}
+              poster={posterUrl || undefined}
+              className={`absolute inset-0 w-full h-full object-cover transition-all duration-500 group-hover:scale-110 ${i === idx ? 'opacity-100' : 'opacity-0'}`}
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              autoPlay={i === idx}
+            />
+          ) : (
+            <img
+              key={slide.url + i}
+              src={slide.url}
+              alt={product.name}
+              className={`absolute inset-0 w-full h-full object-cover transition-all duration-500 group-hover:scale-110 ${i === idx ? 'opacity-100' : 'opacity-0'}`}
+              loading="lazy"
+            />
+          )
         ))}
         {badge && (
           <span
@@ -60,7 +80,7 @@ export default function ProductCard({ product, onAdd }: ProductCardProps) {
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setIdx(i); }}
                 className={`h-2 rounded-full transition-all ${i === idx ? 'w-6 bg-white' : 'w-2 bg-white/60 hover:bg-white/80'}`}
-                aria-label={`Фото ${i + 1}`}
+                aria-label={`Слайд ${i + 1}`}
               />
             ))}
           </div>

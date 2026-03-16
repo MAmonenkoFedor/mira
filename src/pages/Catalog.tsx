@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import Header from '@/components/candy-store/Header';
 import Products from '@/components/candy-store/Products';
@@ -15,6 +16,7 @@ const Catalog = () => {
   const revealRef = useReveal();
   const { products, categories } = useStore();
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
 
   const handleAddToCart = useCallback((product: Product, qty = 1, packagingId?: string | null) => {
     cart.addItem(product, qty, packagingId);
@@ -77,6 +79,11 @@ const Catalog = () => {
       url,
     });
   }, []);
+
+  useEffect(() => {
+    const c = searchParams.get('category');
+    if (c) setActiveCategory(c);
+  }, [searchParams]);
 
   const productCategoryIds = useMemo(() => {
     const set = new Set<string>();

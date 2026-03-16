@@ -10,7 +10,7 @@ import fs from "fs";
 import path from "path";
 
 const app = express();
-app.use(express.json({ limit: "8mb" }));
+app.use(express.json({ limit: "30mb" }));
 const allowedOrigins = (process.env.CORS_ORIGIN?.split(",").map(s => s.trim()).filter(Boolean)) || [
   "http://localhost:8080",
   "http://localhost:8081",
@@ -34,7 +34,9 @@ const jwtSecret = new TextEncoder().encode(process.env.JWT_SECRET || "dev_secret
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 const heroDir = path.join(uploadsDir, "hero");
+const promoDir = path.join(uploadsDir, "promos");
 fs.mkdirSync(heroDir, { recursive: true });
+fs.mkdirSync(promoDir, { recursive: true });
 app.use("/uploads", express.static(uploadsDir));
 
 app.get("/health", async (_req, res) => {
@@ -196,7 +198,7 @@ function requireAuth(handler: express.RequestHandler): express.RequestHandler {
 }
 
 app.get("/api/categories", async (_req, res) => {
-  const { rows } = await pool.query("select id,name,emoji,color,show_on_home from categories order by name");
+  const { rows } = await pool.query("select id,name,emoji,color,show_on_home,home_order from categories order by name");
   res.json(
     rows.map((r: any) => ({
       id: r.id,
@@ -204,6 +206,7 @@ app.get("/api/categories", async (_req, res) => {
       emoji: r.emoji ?? undefined,
       color: r.color ?? undefined,
       showOnHome: r.show_on_home ?? null,
+      homeOrder: r.home_order ?? null,
     }))
   );
 });
@@ -214,13 +217,14 @@ const CategorySchema = z.object({
   emoji: z.string().optional().nullable(),
   color: z.string().optional().nullable(),
   showOnHome: z.boolean().optional().nullable(),
+  homeOrder: z.number().int().optional().nullable(),
 });
 
 app.post("/api/categories", requireAuth(async (req, res) => {
   const data = CategorySchema.parse(req.body);
   await pool.query(
-    "insert into categories(id,name,emoji,color,show_on_home) values($1,$2,$3,$4,$5) on conflict (id) do update set name=excluded.name,emoji=excluded.emoji,color=excluded.color,show_on_home=coalesce(excluded.show_on_home,categories.show_on_home)",
-    [data.id, data.name, data.emoji ?? null, data.color ?? null, data.showOnHome ?? null]
+    "insert into categories(id,name,emoji,color,show_on_home,home_order) values($1,$2,$3,$4,$5,$6) on conflict (id) do update set name=excluded.name,emoji=excluded.emoji,color=excluded.color,show_on_home=coalesce(excluded.show_on_home,categories.show_on_home),home_order=coalesce(excluded.home_order,categories.home_order)",
+    [data.id, data.name, data.emoji ?? null, data.color ?? null, data.showOnHome ?? null, data.homeOrder ?? null]
   );
   res.status(201).json({ ok: true });
 }));
@@ -229,8 +233,8 @@ app.put("/api/categories/:id", requireAuth(async (req, res) => {
   const data = CategorySchema.partial({ id: true }).parse(req.body);
   const id = req.params.id;
   await pool.query(
-    "update categories set name=coalesce($2,name), emoji=$3, color=$4, show_on_home=coalesce($5,show_on_home) where id=$1",
-    [id, data.name ?? null, data.emoji ?? null, data.color ?? null, data.showOnHome ?? null]
+    "update categories set name=coalesce($2,name), emoji=$3, color=$4, show_on_home=coalesce($5,show_on_home), home_order=coalesce($6,home_order) where id=$1",
+    [id, data.name ?? null, data.emoji ?? null, data.color ?? null, data.showOnHome ?? null, data.homeOrder ?? null]
   );
   res.json({ ok: true });
 }));
@@ -242,7 +246,7 @@ app.delete("/api/categories/:id", requireAuth(async (req, res) => {
 
 app.get("/api/products", async (_req, res) => {
   const { rows } = await pool.query(
-    "select id,name,price,old_price,category,categories,badge,description,sku,composition_short,shelf_life,country,composition_set,storage_temperature,product_features,set_weight,package_dimensions,description_long,image,images,popularity,active,packaging_mode,standard_packaging_id from products order by id"
+    "select id,name,price,old_price,category,categories,badge,description,sku,composition_short,shelf_life,country,composition_set,storage_temperature,product_features,set_weight,package_dimensions,description_long,image,images,video_url,popularity,active,packaging_mode,standard_packaging_id from products order by id"
   );
   res.json(
     rows.map((r: any) => {
@@ -269,6 +273,7 @@ app.get("/api/products", async (_req, res) => {
         descriptionLong: r.description_long ?? undefined,
         image: r.image,
         images: r.images ?? undefined,
+        videoUrl: r.video_url ?? undefined,
         popularity: r.popularity ?? 0,
         active: r.active,
         packagingMode: r.packaging_mode ?? undefined,
@@ -298,6 +303,7 @@ const ProductSchema = z.object({
   descriptionLong: z.string().optional(),
   image: z.string(),
   images: z.array(z.string()).optional(),
+  videoUrl: z.string().optional().nullable(),
   popularity: z.number().int().optional(),
   active: z.boolean().optional(),
   packagingMode: z.enum(["none", "standard", "selectable"]).optional(),
@@ -317,7 +323,7 @@ app.post("/api/products", requireAuth(async (req, res) => {
     if (!standardPackagingId) packagingMode = null;
   }
   const { rows } = await pool.query(
-    "insert into products(name,price,old_price,category,categories,badge,description,sku,composition_short,shelf_life,country,composition_set,storage_temperature,product_features,set_weight,package_dimensions,description_long,image,images,popularity,active,packaging_mode,standard_packaging_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) returning id",
+    "insert into products(name,price,old_price,category,categories,badge,description,sku,composition_short,shelf_life,country,composition_set,storage_temperature,product_features,set_weight,package_dimensions,description_long,image,images,video_url,popularity,active,packaging_mode,standard_packaging_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) returning id",
     [
       p.name,
       p.price,
@@ -338,6 +344,7 @@ app.post("/api/products", requireAuth(async (req, res) => {
       p.descriptionLong ?? null,
       p.image,
       p.images ?? null,
+      p.videoUrl ?? null,
       p.popularity ?? 0,
       p.active ?? true,
       packagingMode,
@@ -369,7 +376,7 @@ app.put("/api/products/:id", requireAuth(async (req, res) => {
     if (!nextStandardPackagingId) nextPackagingMode = null;
   }
   await pool.query(
-    "update products set name=coalesce($2,name), price=coalesce($3,price), old_price=$4, category=coalesce($5,category), categories=case when $26 then $27 when $5 is not null then array[$5] else categories end, badge=$6, description=coalesce($7,description), sku=coalesce($8,sku), composition_short=coalesce($9,composition_short), shelf_life=coalesce($10,shelf_life), country=coalesce($11,country), composition_set=coalesce($12,composition_set), storage_temperature=coalesce($13,storage_temperature), product_features=coalesce($14,product_features), set_weight=coalesce($15,set_weight), package_dimensions=coalesce($16,package_dimensions), description_long=coalesce($17,description_long), image=coalesce($18,image), images=$19, popularity=coalesce($20,popularity), active=coalesce($21,active), packaging_mode=case when $22 then $23 when $24 and $25 is null and packaging_mode='standard' then null else packaging_mode end, standard_packaging_id=case when $24 then $25 else standard_packaging_id end where id=$1",
+    "update products set name=coalesce($2,name), price=coalesce($3,price), old_price=$4, category=coalesce($5,category), categories=case when $26 then $27 when $5 is not null then array[$5] else categories end, badge=$6, description=coalesce($7,description), sku=coalesce($8,sku), composition_short=coalesce($9,composition_short), shelf_life=coalesce($10,shelf_life), country=coalesce($11,country), composition_set=coalesce($12,composition_set), storage_temperature=coalesce($13,storage_temperature), product_features=coalesce($14,product_features), set_weight=coalesce($15,set_weight), package_dimensions=coalesce($16,package_dimensions), description_long=coalesce($17,description_long), image=coalesce($18,image), images=$19, video_url=coalesce($28,video_url), popularity=coalesce($20,popularity), active=coalesce($21,active), packaging_mode=case when $22 then $23 when $24 and $25 is null and packaging_mode='standard' then null else packaging_mode end, standard_packaging_id=case when $24 then $25 else standard_packaging_id end where id=$1",
     [
       id,
       p.name ?? null,
@@ -398,6 +405,7 @@ app.put("/api/products/:id", requireAuth(async (req, res) => {
       nextStandardPackagingId,
       hasCategories,
       nextCategories,
+      p.videoUrl ?? null,
     ]
   );
   res.json({ ok: true });
@@ -414,18 +422,20 @@ const PackagingSchema = z.object({
   name: z.string().min(1),
   price: z.number().int().min(0),
   active: z.boolean().optional(),
+  image: z.string().optional().nullable(),
+  images: z.array(z.string()).optional(),
 });
 
 app.get("/api/packaging", async (_req, res) => {
-  const { rows } = await pool.query("select id,name,price,active from packaging_options order by name");
-  res.json(rows.map((r: any) => ({ id: r.id, name: r.name, price: r.price, active: r.active })));
+  const { rows } = await pool.query("select id,name,price,active,image,images from packaging_options order by name");
+  res.json(rows.map((r: any) => ({ id: r.id, name: r.name, price: r.price, active: r.active, image: r.image ?? undefined, images: r.images ?? undefined })));
 });
 
 app.post("/api/packaging", requireAuth(async (req, res) => {
   const p = PackagingSchema.parse(req.body);
   await pool.query(
-    "insert into packaging_options(id,name,price,active) values($1,$2,$3,$4) on conflict (id) do update set name=excluded.name,price=excluded.price,active=excluded.active",
-    [p.id, p.name, p.price, p.active ?? true]
+    "insert into packaging_options(id,name,price,active,image,images) values($1,$2,$3,$4,$5,$6) on conflict (id) do update set name=excluded.name,price=excluded.price,active=excluded.active,image=excluded.image,images=excluded.images",
+    [p.id, p.name, p.price, p.active ?? true, p.image ?? null, p.images ?? null]
   );
   res.status(201).json({ ok: true });
 }));
@@ -433,9 +443,13 @@ app.post("/api/packaging", requireAuth(async (req, res) => {
 app.put("/api/packaging/:id", requireAuth(async (req, res) => {
   const id = req.params.id;
   const p = PackagingSchema.partial().parse(req.body);
+  const hasImage = Object.prototype.hasOwnProperty.call(p, "image");
+  const hasImages = Object.prototype.hasOwnProperty.call(p, "images");
+  const nextImage = hasImage ? (p.image ?? null) : null;
+  const nextImages = hasImages ? (p.images ?? null) : null;
   await pool.query(
-    "update packaging_options set name=coalesce($2,name), price=coalesce($3,price), active=coalesce($4,active) where id=$1",
-    [id, p.name ?? null, p.price ?? null, p.active ?? null]
+    "update packaging_options set name=coalesce($2,name), price=coalesce($3,price), active=coalesce($4,active), image=case when $5 then $6 else image end, images=case when $7 then $8 else images end where id=$1",
+    [id, p.name ?? null, p.price ?? null, p.active ?? null, hasImage, nextImage, hasImages, nextImages]
   );
   res.json({ ok: true });
 }));
@@ -449,6 +463,12 @@ app.delete("/api/packaging/:id", requireAuth(async (req, res) => {
 
 const productsDir = path.join(uploadsDir, "products");
 fs.mkdirSync(productsDir, { recursive: true });
+const productVideosDir = path.join(productsDir, "videos");
+fs.mkdirSync(productVideosDir, { recursive: true });
+const articlesDir = path.join(uploadsDir, "articles");
+fs.mkdirSync(articlesDir, { recursive: true });
+const articleVideosDir = path.join(articlesDir, "videos");
+fs.mkdirSync(articleVideosDir, { recursive: true });
 const UploadProductSchema = z.object({ dataUrl: z.string().min(1) });
 app.post("/api/products/upload", requireAuth(async (req, res) => {
   try {
@@ -469,15 +489,76 @@ app.post("/api/products/upload", requireAuth(async (req, res) => {
   }
 }));
 
+const UploadProductVideoSchema = z.object({ dataUrl: z.string().min(1) });
+app.post("/api/products/upload-video", requireAuth(async (req, res) => {
+  try {
+    const { dataUrl } = UploadProductVideoSchema.parse(req.body);
+    const m = /^data:(video\/(mp4|webm|ogg));base64,(.+)$/.exec(dataUrl);
+    if (!m) return res.status(400).json({ error: "bad_video" });
+    const mime = m[1];
+    const ext = mime.includes("webm") ? "webm" : mime.includes("ogg") ? "ogg" : "mp4";
+    const buf = Buffer.from(m[3], "base64");
+    if (buf.length > 20 * 1024 * 1024) return res.status(400).json({ error: "too_large" });
+    const name = `product_video_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const filePath = path.join(productVideosDir, name);
+    fs.writeFileSync(filePath, buf);
+    const url = `/uploads/products/videos/${name}`;
+    res.status(201).json({ url });
+  } catch {
+    res.status(400).json({ error: "bad_request" });
+  }
+}));
+
+const UploadArticleSchema = z.object({ dataUrl: z.string().min(1) });
+app.post("/api/articles/upload", requireAuth(async (req, res) => {
+  try {
+    const { dataUrl } = UploadArticleSchema.parse(req.body);
+    const m = /^data:(image\/(png|jpeg|jpg|webp));base64,(.+)$/.exec(dataUrl);
+    if (!m) return res.status(400).json({ error: "bad_image" });
+    const mime = m[1];
+    const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
+    const buf = Buffer.from(m[3], "base64");
+    if (buf.length > 5 * 1024 * 1024) return res.status(400).json({ error: "too_large" });
+    const name = `article_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const filePath = path.join(articlesDir, name);
+    fs.writeFileSync(filePath, buf);
+    const url = `/uploads/articles/${name}`;
+    res.status(201).json({ url });
+  } catch {
+    res.status(400).json({ error: "bad_request" });
+  }
+}));
+
+const UploadArticleVideoSchema = z.object({ dataUrl: z.string().min(1) });
+app.post("/api/articles/upload-video", requireAuth(async (req, res) => {
+  try {
+    const { dataUrl } = UploadArticleVideoSchema.parse(req.body);
+    const m = /^data:(video\/(mp4|webm|ogg));base64,(.+)$/.exec(dataUrl);
+    if (!m) return res.status(400).json({ error: "bad_video" });
+    const mime = m[1];
+    const ext = mime.includes("webm") ? "webm" : mime.includes("ogg") ? "ogg" : "mp4";
+    const buf = Buffer.from(m[3], "base64");
+    if (buf.length > 20 * 1024 * 1024) return res.status(400).json({ error: "too_large" });
+    const name = `article_video_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const filePath = path.join(articleVideosDir, name);
+    fs.writeFileSync(filePath, buf);
+    const url = `/uploads/articles/videos/${name}`;
+    res.status(201).json({ url });
+  } catch {
+    res.status(400).json({ error: "bad_request" });
+  }
+}));
+
 /* ─── Hero images ─── */
 const HeroImageSchema = z.object({
   url: z.string(),
+  link: z.string().optional().nullable(),
   position: z.number().int().optional(),
   active: z.boolean().optional(),
 });
 
 app.get("/api/hero-images", async (_req, res) => {
-  const { rows } = await pool.query("select id,url,position,active from hero_images order by position asc, id asc");
+  const { rows } = await pool.query("select id,url,link,position,active from hero_images order by position asc, id asc");
   res.json(rows);
 });
 
@@ -505,8 +586,8 @@ app.post("/api/hero-images", requireAuth(async (req, res) => {
   const p = HeroImageSchema.parse(req.body);
   const pos = p.position ?? 0;
   const { rows } = await pool.query(
-    "insert into hero_images(url,position,active) values($1,$2,$3) returning id",
-    [p.url, pos, p.active ?? true]
+    "insert into hero_images(url,link,position,active) values($1,$2,$3,$4) returning id",
+    [p.url, p.link ?? null, pos, p.active ?? true]
   );
   res.status(201).json({ id: rows[0].id });
 }));
@@ -515,14 +596,71 @@ app.put("/api/hero-images/:id", requireAuth(async (req, res) => {
   const id = Number(req.params.id);
   const p = HeroImageSchema.partial().parse(req.body);
   await pool.query(
-    "update hero_images set url=coalesce($2,url), position=coalesce($3,position), active=coalesce($4,active) where id=$1",
-    [id, p.url ?? null, p.position ?? null, p.active ?? null]
+    "update hero_images set url=coalesce($2,url), link=coalesce($3,link), position=coalesce($4,position), active=coalesce($5,active) where id=$1",
+    [id, p.url ?? null, p.link ?? null, p.position ?? null, p.active ?? null]
   );
   res.json({ ok: true });
 }));
 
 app.delete("/api/hero-images/:id", requireAuth(async (req, res) => {
   await pool.query("delete from hero_images where id=$1", [Number(req.params.id)]);
+  res.json({ ok: true });
+}));
+
+/* ─── Promo banners ─── */
+const PromoBannerSchema = z.object({
+  url: z.string(),
+  link: z.string().optional().nullable(),
+  position: z.number().int().optional(),
+  active: z.boolean().optional(),
+});
+
+app.get("/api/promo-banners", async (_req, res) => {
+  const { rows } = await pool.query("select id,url,link,position,active from promo_banners order by position asc, id asc");
+  res.json(rows);
+});
+
+app.post("/api/promo-banners/upload", requireAuth(async (req, res) => {
+  try {
+    const { dataUrl } = UploadSchema.parse(req.body);
+    const m = /^data:(image\/(png|jpeg|jpg|webp));base64,(.+)$/.exec(dataUrl);
+    if (!m) return res.status(400).json({ error: "bad_image" });
+    const mime = m[1];
+    const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
+    const buf = Buffer.from(m[3], "base64");
+    if (buf.length > 5 * 1024 * 1024) return res.status(400).json({ error: "too_large" });
+    const name = `promo_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const filePath = path.join(promoDir, name);
+    fs.writeFileSync(filePath, buf);
+    const url = `/uploads/promos/${name}`;
+    res.status(201).json({ url });
+  } catch {
+    res.status(400).json({ error: "bad_request" });
+  }
+}));
+
+app.post("/api/promo-banners", requireAuth(async (req, res) => {
+  const p = PromoBannerSchema.parse(req.body);
+  const pos = p.position ?? 0;
+  const { rows } = await pool.query(
+    "insert into promo_banners(url,link,position,active) values($1,$2,$3,$4) returning id",
+    [p.url, p.link ?? null, pos, p.active ?? true]
+  );
+  res.status(201).json({ id: rows[0].id });
+}));
+
+app.put("/api/promo-banners/:id", requireAuth(async (req, res) => {
+  const id = Number(req.params.id);
+  const p = PromoBannerSchema.partial().parse(req.body);
+  await pool.query(
+    "update promo_banners set url=coalesce($2,url), link=coalesce($3,link), position=coalesce($4,position), active=coalesce($5,active) where id=$1",
+    [id, p.url ?? null, p.link ?? null, p.position ?? null, p.active ?? null]
+  );
+  res.json({ ok: true });
+}));
+
+app.delete("/api/promo-banners/:id", requireAuth(async (req, res) => {
+  await pool.query("delete from promo_banners where id=$1", [Number(req.params.id)]);
   res.json({ ok: true });
 }));
 
@@ -591,7 +729,7 @@ app.delete("/api/promos/:id", requireAuth(async (req, res) => {
 
 app.get("/api/articles", async (_req, res) => {
   const { rows } = await pool.query(
-    "select id,slug,title,excerpt,content,tag,read_time,image,product_id from articles order by id"
+    "select id,slug,title,excerpt,content,tag,read_time,image,images,video_url,product_id,category_id from articles order by id"
   );
   res.json(
     rows.map((r: any) => ({
@@ -603,14 +741,17 @@ app.get("/api/articles", async (_req, res) => {
       tag: r.tag ?? "",
       readTime: r.read_time ?? "",
       image: r.image ?? undefined,
+      images: r.images ?? undefined,
+      videoUrl: r.video_url ?? undefined,
       productId: r.product_id ?? undefined,
+      categoryId: r.category_id ?? undefined,
     }))
   );
 });
 
 app.get("/api/articles/:slug", async (req, res) => {
   const { rows } = await pool.query(
-    "select id,slug,title,excerpt,content,tag,read_time,image,product_id from articles where slug=$1 limit 1",
+    "select id,slug,title,excerpt,content,tag,read_time,image,images,video_url,product_id,category_id from articles where slug=$1 limit 1",
     [req.params.slug]
   );
   if (!rows[0]) return res.status(404).json({ error: "not_found" });
@@ -624,7 +765,10 @@ app.get("/api/articles/:slug", async (req, res) => {
     tag: r.tag ?? "",
     readTime: r.read_time ?? "",
     image: r.image ?? undefined,
+    images: r.images ?? undefined,
+    videoUrl: r.video_url ?? undefined,
     productId: r.product_id ?? undefined,
+    categoryId: r.category_id ?? undefined,
   });
 });
 
@@ -636,14 +780,17 @@ const ArticleSchema = z.object({
   tag: z.string().optional(),
   readTime: z.string().optional(),
   image: z.string().optional(),
+  images: z.array(z.string()).optional(),
+  videoUrl: z.string().optional().nullable(),
   productId: z.number().int().optional(),
+  categoryId: z.string().optional().nullable(),
 });
 
 app.post("/api/articles", requireAuth(async (req, res) => {
   const a = ArticleSchema.parse(req.body);
   await pool.query(
-    "insert into articles(slug,title,excerpt,content,tag,read_time,image,product_id) values($1,$2,$3,$4,$5,$6,$7,$8)",
-    [a.slug, a.title, a.excerpt, a.content ?? null, a.tag ?? null, a.readTime ?? null, a.image ?? null, a.productId ?? null]
+    "insert into articles(slug,title,excerpt,content,tag,read_time,image,images,video_url,product_id,category_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
+    [a.slug, a.title, a.excerpt, a.content ?? null, a.tag ?? null, a.readTime ?? null, a.image ?? null, a.images ?? null, a.videoUrl ?? null, a.productId ?? null, a.categoryId ?? null]
   );
   res.status(201).json({ ok: true });
 }));
@@ -652,8 +799,8 @@ app.put("/api/articles/:id", requireAuth(async (req, res) => {
   const id = Number(req.params.id);
   const a = ArticleSchema.partial({ slug: true }).parse(req.body);
   await pool.query(
-    "update articles set title=coalesce($2,title), excerpt=coalesce($3,excerpt), content=$4, tag=$5, read_time=$6, image=$7, product_id=$8 where id=$1",
-    [id, a.title ?? null, a.excerpt ?? null, a.content ?? null, a.tag ?? null, a.readTime ?? null, a.image ?? null, a.productId ?? null]
+    "update articles set title=coalesce($2,title), excerpt=coalesce($3,excerpt), content=$4, tag=$5, read_time=$6, image=$7, images=$8, video_url=$9, product_id=$10, category_id=$11 where id=$1",
+    [id, a.title ?? null, a.excerpt ?? null, a.content ?? null, a.tag ?? null, a.readTime ?? null, a.image ?? null, a.images ?? null, a.videoUrl ?? null, a.productId ?? null, a.categoryId ?? null]
   );
   res.json({ ok: true });
 }));

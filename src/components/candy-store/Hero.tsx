@@ -63,15 +63,36 @@ export default function Hero() {
 
         <div className="flex-1 max-w-lg lg:max-w-xl">
           <div className="relative w-full rounded-3xl shadow-candy-lg overflow-hidden">
-            {(slides.length ? slides : [{ url: '/images/hero-sweets.jpg' } as any]).map((s, i) => (
-              <img
-                key={s.id ?? i}
-                src={resolveMediaUrl(s.url)}
-                alt="Ассортимент красочных детских сладостей"
-                className={`w-full aspect-[1600/893] object-cover transition-opacity duration-700 ${i === (idx % (slides.length || 1)) ? 'opacity-100' : 'opacity-0 absolute inset-0'}`}
-                loading={i === 0 ? 'eager' : 'lazy'}
-              />
-            ))}
+            {(slides.length ? slides : [{ url: '/images/hero-sweets.jpg' } as any]).map((s, i) => {
+              const isActive = i === (idx % (slides.length || 1));
+              const link = typeof s.link === 'string' ? s.link.trim() : '';
+              const isExternal = /^https?:\/\//i.test(link);
+              const wrapperClass = `w-full aspect-[1600/893] transition-opacity duration-700 ${isActive ? 'opacity-100' : 'opacity-0 absolute inset-0'} ${link ? 'cursor-pointer' : ''}`;
+              const img = (
+                <img
+                  src={resolveMediaUrl(s.url)}
+                  alt="Ассортимент красочных детских сладостей"
+                  className="w-full h-full object-cover"
+                  loading={i === 0 ? 'eager' : 'lazy'}
+                />
+              );
+              if (link) {
+                return isExternal ? (
+                  <a key={s.id ?? i} href={link} target="_blank" rel="noreferrer" className={wrapperClass}>
+                    {img}
+                  </a>
+                ) : (
+                  <Link key={s.id ?? i} to={link} className={wrapperClass}>
+                    {img}
+                  </Link>
+                );
+              }
+              return (
+                <div key={s.id ?? i} className={wrapperClass}>
+                  {img}
+                </div>
+              );
+            })}
             {slides.length > 1 && (
               <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 bg-card/40 backdrop-blur rounded-full px-2 py-1">
                 {slides.map((_, i) => (

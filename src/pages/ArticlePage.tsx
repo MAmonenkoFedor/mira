@@ -10,15 +10,28 @@ import { useCart } from '@/components/candy-store/useCart';
 import { toast } from 'sonner';
 import { resolveMediaUrl } from '@/lib/api';
 import { badgeToneSoftClasses } from '@/components/candy-store/data';
+import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from '@/components/ui/carousel';
 
 export default function ArticlePage() {
   const { slug } = useParams<{ slug: string }>();
-  const { articles, products, badges } = useStore() as any;
+  const { articles, products, badges, categories } = useStore() as any;
   const cart = useCart();
   const nav = useNavigate();
   const article = articles.find(a => a.slug === slug);
   const linked = article?.productId ? products.find((p: any) => p.id === article.productId && (p.active ?? true)) : null;
+  const linkedCategory = article?.categoryId ? categories.find((c: any) => c.id === article.categoryId) : null;
   const linkedBadge = useMemo(() => linked ? badges.find((b: any) => b.id === linked.badge && b.active) : null, [badges, linked]);
+  const slides = useMemo(() => {
+    if (!article) return [];
+    const list = article.images && article.images.length ? article.images : (article.image ? [article.image] : []);
+    const imageUrls = list.map((u: string) => resolveMediaUrl(u));
+    const videoUrl = article.videoUrl ? resolveMediaUrl(article.videoUrl) : '';
+    if (videoUrl) {
+      return [{ type: 'video' as const, url: videoUrl }, ...imageUrls.map((url) => ({ type: 'image' as const, url }))];
+    }
+    return imageUrls.map((url) => ({ type: 'image' as const, url }));
+  }, [article]);
+  const posterUrl = useMemo(() => resolveMediaUrl(article?.image || article?.images?.[0]), [article]);
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   }, [slug]);
@@ -60,7 +73,8 @@ export default function ArticlePage() {
     const baseDescription = (article.excerpt || article.content || '').trim();
     const description = baseDescription ? baseDescription.slice(0, 160) : 'Статья о сладостях, подарочных наборах и новинках магазина.';
     const url = `${window.location.origin}/articles/${article.slug}`;
-    const image = article.image ? toAbs(article.image) : `${window.location.origin}/images/hero-sweets.jpg`;
+    const ogImage = slides.find(s => s.type === 'image');
+    const image = ogImage ? toAbs(ogImage.url) : `${window.location.origin}/images/hero-sweets.jpg`;
     document.title = title;
     setMeta('name', 'description', description);
     setMeta('name', 'robots', 'index, follow');
@@ -107,7 +121,7 @@ export default function ArticlePage() {
         },
       ],
     });
-  }, [article]);
+  }, [article, slides]);
 
   if (!article) {
     return (
@@ -141,9 +155,39 @@ export default function ArticlePage() {
           </h1>
 
           {/* Hero image */}
-          {article.image && (
+          {slides.length > 0 && (
             <div className="rounded-2xl overflow-hidden mb-8 border border-border/40">
-              <img src={resolveMediaUrl(article.image)} alt={article.title} className="w-full h-auto object-cover max-h-[400px]" />
+              <Carousel className="w-full">
+                <CarouselContent>
+                  {slides.map((slide, i) => (
+                    <CarouselItem key={slide.url + i}>
+                      {slide.type === 'video' ? (
+                        <video
+                          src={slide.url}
+                          poster={posterUrl || undefined}
+                          className="w-full h-auto object-cover max-h-[420px]"
+                          muted
+                          loop
+                          playsInline
+                          preload="metadata"
+                        />
+                      ) : (
+                        <img
+                          src={slide.url}
+                          alt={article.title}
+                          className="w-full h-auto object-cover max-h-[420px]"
+                        />
+                      )}
+                    </CarouselItem>
+                  ))}
+                </CarouselContent>
+                {slides.length > 1 && (
+                  <>
+                    <CarouselPrevious className="left-3" />
+                    <CarouselNext className="right-3" />
+                  </>
+                )}
+              </Carousel>
             </div>
           )}
 
@@ -180,6 +224,14 @@ export default function ArticlePage() {
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+          {linkedCategory && (
+            <div className="mt-6">
+              <Link to={`/catalog?category=${encodeURIComponent(linkedCategory.id)}`} className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card px-4 py-2 text-sm font-medium text-primary hover:underline">
+                <Tag size={14} />
+                {linkedCategory.emoji ? `${linkedCategory.emoji} ` : ''}{linkedCategory.name}
+              </Link>
             </div>
           )}
 

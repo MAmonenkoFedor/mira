@@ -73,6 +73,21 @@ export const api = {
   async uploadHeroImage(dataUrl: string) {
     return j(fetch(`${base}/api/hero-images/upload`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) })));
   },
+  async getPromoBanners() {
+    return j(fetch(`${base}/api/promo-banners`));
+  },
+  async addPromoBanner(p: any) {
+    return j(fetch(`${base}/api/promo-banners`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+  },
+  async updatePromoBanner(id: number, p: any) {
+    return j(fetch(`${base}/api/promo-banners/${id}`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+  },
+  async deletePromoBanner(id: number) {
+    return j(fetch(`${base}/api/promo-banners/${id}`, withAuth({ method: "DELETE" })));
+  },
+  async uploadPromoBanner(dataUrl: string) {
+    return j(fetch(`${base}/api/promo-banners/upload`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) })));
+  },
   async getPromos() {
     return j(fetch(`${base}/api/promos`));
   },
@@ -105,6 +120,15 @@ export const api = {
   },
   async uploadProductImage(dataUrl: string) {
     return j(fetch(`${base}/api/products/upload`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) })));
+  },
+  async uploadProductVideo(dataUrl: string) {
+    return j(fetch(`${base}/api/products/upload-video`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) })));
+  },
+  async uploadArticleImage(dataUrl: string) {
+    return j(fetch(`${base}/api/articles/upload`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) })));
+  },
+  async uploadArticleVideo(dataUrl: string) {
+    return j(fetch(`${base}/api/articles/upload-video`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) })));
   },
   async deleteProduct(id: number) {
     return j(fetch(`${base}/api/products/${id}`, withAuth({ method: "DELETE" })));

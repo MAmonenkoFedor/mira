@@ -25,6 +25,7 @@ export async function migrate(pool: Pool) {
     );
   `);
   await pool.query(`alter table categories add column if not exists show_on_home boolean`);
+  await pool.query(`alter table categories add column if not exists home_order integer`);
   await pool.query(`
     create table if not exists products(
       id serial primary key,
@@ -41,6 +42,7 @@ export async function migrate(pool: Pool) {
   `);
   await pool.query(`alter table products add column if not exists active boolean not null default true`);
   await pool.query(`alter table products add column if not exists images text[]`);
+  await pool.query(`alter table products add column if not exists video_url text`);
   await pool.query(`
     create table if not exists promocodes(
       id serial primary key,
@@ -65,6 +67,9 @@ export async function migrate(pool: Pool) {
     );
   `);
   await pool.query(`alter table articles add column if not exists product_id integer`);
+  await pool.query(`alter table articles add column if not exists category_id text`);
+  await pool.query(`alter table articles add column if not exists images text[]`);
+  await pool.query(`alter table articles add column if not exists video_url text`);
   await pool.query(`
     create table if not exists admins(
       id serial primary key,
@@ -115,10 +120,22 @@ export async function migrate(pool: Pool) {
       active boolean not null default true
     );
   `);
+  await pool.query(`alter table packaging_options add column if not exists image text`);
+  await pool.query(`alter table packaging_options add column if not exists images text[]`);
   await pool.query(`
     create table if not exists hero_images(
       id serial primary key,
       url text not null,
+      position integer not null default 0,
+      active boolean not null default true
+    );
+  `);
+  await pool.query(`alter table hero_images add column if not exists link text`);
+  await pool.query(`
+    create table if not exists promo_banners(
+      id serial primary key,
+      url text not null,
+      link text,
       position integer not null default 0,
       active boolean not null default true
     );

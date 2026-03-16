@@ -1,8 +1,47 @@
+import { useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import { useStore } from './useStore';
+import { resolveMediaUrl } from '@/lib/api';
+import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from '@/components/ui/carousel';
+
 interface PromoBannerProps {
   onApplyPromo: () => void;
 }
 
 export default function PromoBanner({ onApplyPromo }: PromoBannerProps) {
+  const { promoBanners } = useStore();
+  const banners = useMemo(
+    () => (promoBanners || []).filter(b => b.active).sort((a, b) => a.position - b.position),
+    [promoBanners]
+  );
+
+  if (banners.length > 0) {
+    return (
+      <section id="promo" className="py-12 md:py-16">
+        <div className="container">
+          <h2 className="font-display text-2xl md:text-3xl font-bold mb-6 text-center">Акции</h2>
+          <div className="reveal rounded-3xl overflow-hidden border border-border/60 bg-card">
+            {banners.length === 1 ? (
+              <PromoBannerItem banner={banners[0]} />
+            ) : (
+              <Carousel opts={{ align: 'start' }} className="w-full">
+                <CarouselContent className="-ml-0">
+                  {banners.map(b => (
+                    <CarouselItem key={b.id} className="pl-0">
+                      <PromoBannerItem banner={b} />
+                    </CarouselItem>
+                  ))}
+                </CarouselContent>
+                <CarouselPrevious className="left-3 right-auto top-1/2 -translate-y-1/2 translate-x-0 bg-background/80 hover:bg-background" />
+                <CarouselNext className="right-3 left-auto top-1/2 -translate-y-1/2 translate-x-0 bg-background/80 hover:bg-background" />
+              </Carousel>
+            )}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section id="promo" className="py-12 md:py-16">
       <div className="container">
@@ -28,4 +67,29 @@ export default function PromoBanner({ onApplyPromo }: PromoBannerProps) {
       </div>
     </section>
   );
+}
+
+function PromoBannerItem({ banner }: { banner: { url: string; link?: string | null } }) {
+  const link = typeof banner.link === 'string' ? banner.link.trim() : '';
+  const isExternal = /^https?:\/\//i.test(link);
+  const img = (
+    <img
+      src={resolveMediaUrl(banner.url)}
+      alt="Баннер акции"
+      className="w-full aspect-[1600/520] object-cover"
+      loading="lazy"
+    />
+  );
+  if (link) {
+    return isExternal ? (
+      <a href={link} target="_blank" rel="noreferrer" className="block">
+        {img}
+      </a>
+    ) : (
+      <Link to={link} className="block">
+        {img}
+      </Link>
+    );
+  }
+  return img;
 }

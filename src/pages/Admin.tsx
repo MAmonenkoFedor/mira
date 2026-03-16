@@ -7,7 +7,7 @@ import { api, resolveMediaUrl } from '@/lib/api';
 import { badgeToneSoftClasses, badgeToneClasses } from '@/components/candy-store/data';
 import type { Product, Category, Promo, PromoScope, Badge, BadgeTone, PackagingOption } from '@/components/candy-store/data';
 
-type Tab = 'products' | 'categories' | 'packaging' | 'articles' | 'promos' | 'import' | 'hero' | 'badges' | 'orders' | 'footer';
+type Tab = 'products' | 'categories' | 'packaging' | 'articles' | 'promos' | 'actions' | 'import' | 'hero' | 'badges' | 'orders' | 'footer';
 
 const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader();
@@ -96,6 +96,74 @@ function ImageUpload({ value, onChange }: { value: string; onChange: (v: string)
   );
 }
 
+function VideoUpload({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const handleFile = async (file: File) => {
+    if (!file.type.startsWith('video/')) { toast.error('Только видео'); return; }
+    if (file.size > 20 * 1024 * 1024) { toast.error('Макс. размер 20 МБ'); return; }
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      onChange(dataUrl);
+    } catch {
+      toast.error('Не удалось обработать видео');
+    }
+  };
+
+  return (
+    <div>
+      <label className="text-xs font-medium text-muted-foreground mb-1 block">Видеообложка</label>
+      <div
+        className={`relative rounded-xl border-2 border-dashed transition-colors p-3 ${
+          dragging ? 'border-primary bg-primary/5' : 'border-border'
+        }`}
+        onDragOver={e => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+      >
+        <div className="flex items-center gap-3">
+          {value ? (
+            <div className="relative">
+              <video
+                src={resolveMediaUrl(value)}
+                className="w-20 h-16 rounded-xl object-cover border border-border"
+                muted
+                playsInline
+                preload="metadata"
+              />
+              <button type="button" onClick={() => onChange('')}
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center">
+                <X size={12} />
+              </button>
+            </div>
+          ) : (
+            <div className="w-20 h-16 rounded-xl bg-muted flex items-center justify-center text-muted-foreground">
+              <Upload size={20} />
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <button type="button" onClick={() => inputRef.current?.click()}
+              className="text-sm font-medium text-primary hover:underline">
+              Загрузить видео
+            </button>
+            <p className="text-[11px] text-muted-foreground mt-0.5">или перетащите сюда · MP4, WebM, OGG до 20 МБ</p>
+            <input
+              type="text"
+              value={value.startsWith('data:') ? '' : value}
+              onChange={e => onChange(e.target.value)}
+              placeholder="или вставьте URL: /uploads/products/videos/..."
+              className="admin-input mt-1.5 text-xs"
+            />
+          </div>
+        </div>
+        <input ref={inputRef} type="file" accept="video/*" className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+      </div>
+    </div>
+  );
+}
+
 /* ─── Main Admin ─── */
 export default function Admin() {
   const store = useStore();
@@ -112,6 +180,7 @@ export default function Admin() {
     { key: 'articles', icon: FileText, label: 'Статьи', count: store.articles.length },
     { key: 'orders', icon: ClipboardList, label: 'Заказы', count: store.orders?.length || 0 },
     { key: 'promos', icon: Percent, label: 'Промокоды', count: store.promos?.length || 0 },
+    { key: 'actions', icon: ImageIcon, label: 'Акции', count: store.promoBanners?.length || 0 },
     { key: 'hero', icon: ImageIcon, label: 'Баннер', count: store.heroImages?.length || 0 },
     { key: 'footer', icon: ImageIcon, label: 'Футер', count: 0 },
     { key: 'import', icon: Upload, label: 'Импорт', count: 0 },
@@ -232,6 +301,7 @@ export default function Admin() {
               {tab === 'articles' && <ArticlesTab store={store} />}
               {tab === 'orders' && <OrdersTab store={store} />}
               {tab === 'promos' && <PromosTab store={store} />}
+              {tab === 'actions' && <PromoBannersTab store={store} />}
               {tab === 'import' && <ImportTab store={store} />}
               {tab === 'hero' && <HeroTab store={store} />}
               {tab === 'footer' && <FooterTab store={store} />}
@@ -466,6 +536,7 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
 /* ─── Hero Tab ─── */
 function HeroTab({ store }: { store: ReturnType<typeof useStore> }) {
   const [val, setVal] = useState('');
+  const [linkVal, setLinkVal] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState('');
@@ -481,8 +552,9 @@ function HeroTab({ store }: { store: ReturnType<typeof useStore> }) {
         const res = await api.uploadHeroImage(webpUrl) as { url: string };
         finalUrl = res.url;
       }
-      await store.addHeroImage(finalUrl);
+      await store.addHeroImage({ url: finalUrl, link: linkVal.trim() || null });
       setVal('');
+      setLinkVal('');
       setFile(null);
       setPreview('');
       toast.success('Баннер добавлен');
@@ -558,6 +630,16 @@ function HeroTab({ store }: { store: ReturnType<typeof useStore> }) {
                 className="admin-input text-sm"
               />
             </div>
+            <div className="grid gap-1">
+              <label className="text-xs font-medium text-muted-foreground">Ссылка для перехода</label>
+              <input
+                type="text"
+                value={linkVal}
+                onChange={e => setLinkVal(e.target.value)}
+                placeholder="/catalog или https://..."
+                className="admin-input text-sm"
+              />
+            </div>
           </div>
           <button
             onClick={add}
@@ -571,62 +653,267 @@ function HeroTab({ store }: { store: ReturnType<typeof useStore> }) {
       </div>
       <div className="grid gap-3">
         {imgs.map((img, idx) => (
-          <div key={`${img.id}-${img.position}-${idx}`} className="flex items-center gap-4 bg-card rounded-2xl p-4 border border-border/40 shadow-sm">
-            <img src={resolveMediaUrl(img.url)} alt="" className="w-20 h-16 object-cover rounded-xl border" />
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-display">pos: {img.position}</div>
-              <div className="text-xs text-muted-foreground truncate">{img.url}</div>
-            </div>
-            <label className="flex items-center gap-2 text-xs">
-              <input
-                type="checkbox"
-                checked={img.active}
-                onChange={async (e) => {
+          <div key={`${img.id}-${img.position}-${idx}`} className="grid gap-3 bg-card rounded-2xl p-4 border border-border/40 shadow-sm">
+            <div className="flex items-center gap-4">
+              <img src={resolveMediaUrl(img.url)} alt="" className="w-20 h-16 object-cover rounded-xl border" />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-display">pos: {img.position}</div>
+                <div className="text-xs text-muted-foreground truncate">{img.url}</div>
+              </div>
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={img.active}
+                  onChange={async (e) => {
+                    try {
+                      await store.updateHeroImage(img.id, { active: e.target.checked });
+                    } catch (err) {
+                      const code = err instanceof Error ? err.message : '';
+                      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                      else toast.error('Не удалось обновить баннер');
+                    }
+                  }}
+                />
+                Активно
+              </label>
+              <div className="flex gap-1.5">
+                <button onClick={async () => {
                   try {
-                    await store.updateHeroImage(img.id, { active: e.target.checked });
+                    const newPos = Math.max(0, img.position - 1);
+                    await store.updateHeroImage(img.id, { position: newPos });
                   } catch (err) {
                     const code = err instanceof Error ? err.message : '';
                     if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
                     else toast.error('Не удалось обновить баннер');
                   }
-                }}
+                }} className="p-2 rounded-xl hover:bg-muted text-muted-foreground"><ArrowUp size={15} /></button>
+                <button onClick={async () => {
+                  try {
+                    await store.updateHeroImage(img.id, { position: img.position + 1 });
+                  } catch (err) {
+                    const code = err instanceof Error ? err.message : '';
+                    if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                    else toast.error('Не удалось обновить баннер');
+                  }
+                }} className="p-2 rounded-xl hover:bg-muted text-muted-foreground"><ArrowDown size={15} /></button>
+                <button onClick={async () => {
+                  try {
+                    await store.deleteHeroImage(img.id);
+                    toast.success('Удалено');
+                  } catch (err) {
+                    const code = err instanceof Error ? err.message : '';
+                    if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                    else toast.error('Не удалось удалить баннер');
+                  }
+                }} className="p-2 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={15} /></button>
+              </div>
+            </div>
+            <div className="grid gap-1">
+              <label className="text-xs font-medium text-muted-foreground">Ссылка</label>
+              <input
+                type="text"
+                value={img.link || ''}
+                onChange={e => store.updateHeroImage(img.id, { link: e.target.value })}
+                placeholder="/catalog или https://..."
+                className="admin-input text-sm"
               />
-              Активно
-            </label>
-            <div className="flex gap-1.5">
-              <button onClick={async () => {
-                try {
-                  const newPos = Math.max(0, img.position - 1);
-                  await store.updateHeroImage(img.id, { position: newPos });
-                } catch (err) {
-                  const code = err instanceof Error ? err.message : '';
-                  if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-                  else toast.error('Не удалось обновить баннер');
-                }
-              }} className="p-2 rounded-xl hover:bg-muted text-muted-foreground"><ArrowUp size={15} /></button>
-              <button onClick={async () => {
-                try {
-                  await store.updateHeroImage(img.id, { position: img.position + 1 });
-                } catch (err) {
-                  const code = err instanceof Error ? err.message : '';
-                  if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-                  else toast.error('Не удалось обновить баннер');
-                }
-              }} className="p-2 rounded-xl hover:bg-muted text-muted-foreground"><ArrowDown size={15} /></button>
-              <button onClick={async () => {
-                try {
-                  await store.deleteHeroImage(img.id);
-                  toast.success('Удалено');
-                } catch (err) {
-                  const code = err instanceof Error ? err.message : '';
-                  if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-                  else toast.error('Не удалось удалить баннер');
-                }
-              }} className="p-2 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={15} /></button>
             </div>
           </div>
         ))}
         {imgs.length === 0 && <div className="text-sm text-muted-foreground">Пока нет изображений. Добавьте первое!</div>}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Promo Banners Tab ─── */
+function PromoBannersTab({ store }: { store: ReturnType<typeof useStore> }) {
+  const [val, setVal] = useState('');
+  const [linkVal, setLinkVal] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState('');
+  const add = async () => {
+    if (busy) return;
+    let finalUrl = val.trim();
+    if (!file && !finalUrl) { toast.error('Добавьте файл или URL'); return; }
+    try {
+      setBusy(true);
+      if (file || finalUrl.startsWith('data:image/')) {
+        const dataUrl = file ? await readFileAsDataUrl(file) : finalUrl;
+        const webpUrl = await toWebpDataUrl(dataUrl);
+        const res = await api.uploadPromoBanner(webpUrl) as { url: string };
+        finalUrl = res.url;
+      }
+      await store.addPromoBanner({ url: finalUrl, link: linkVal.trim() || null });
+      setVal('');
+      setLinkVal('');
+      setFile(null);
+      setPreview('');
+      toast.success('Баннер добавлен');
+    } catch (err) {
+      const code = err instanceof Error ? err.message : '';
+      if (code === '401' || code === '403') {
+        toast.error('Нет доступа для загрузки. Перезайдите в админку.');
+      } else if (code === '413') {
+        toast.error('Файл слишком большой. Максимум 5 МБ.');
+      } else if (code === 'read_error') {
+        toast.error('Не удалось прочитать файл. Попробуйте другой.');
+      } else if (code === '400') {
+        toast.error('Неверный формат или размер файла. Попробуйте JPG/PNG/WebP до 5 МБ.');
+      } else {
+        toast.error('Не удалось загрузить изображение');
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+  const banners = [...store.promoBanners].sort((a,b)=> a.position - b.position);
+  return (
+    <div className="grid gap-4">
+      <div className="bg-card rounded-2xl p-5 border border-border/40 shadow-sm">
+        <div className="font-display font-semibold mb-3">Добавить баннер акции</div>
+        <div className="grid gap-3 sm:grid-cols-[1fr_auto] items-start">
+          <div className="grid gap-3">
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-muted/50 text-sm cursor-pointer hover:bg-muted">
+                <Upload size={16} />
+                <span>Выбрать файл</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={e => {
+                    const f = e.target.files?.[0] || null;
+                    if (!f) { setFile(null); setPreview(''); return; }
+                    if (!f.type.startsWith('image/')) {
+                      toast.error('Можно загрузить только изображение');
+                      e.currentTarget.value = '';
+                      setFile(null);
+                      setPreview('');
+                      return;
+                    }
+                    if (f.size > 5 * 1024 * 1024) {
+                      toast.error('Файл слишком большой. Максимум 5 МБ.');
+                      e.currentTarget.value = '';
+                      setFile(null);
+                      setPreview('');
+                      return;
+                    }
+                    setFile(f);
+                    setVal('');
+                    setPreview(URL.createObjectURL(f));
+                  }}
+                />
+              </label>
+              {file && <span className="text-xs text-muted-foreground truncate">{file.name}</span>}
+            </div>
+            {preview && (
+              <div className="w-full max-w-sm rounded-xl overflow-hidden border border-border/40">
+                <img src={preview} alt="" className="w-full h-40 object-cover" />
+              </div>
+            )}
+            <div className="grid gap-1">
+              <label className="text-xs font-medium text-muted-foreground">Или вставьте URL</label>
+              <input
+                type="text"
+                value={val}
+                onChange={e => { setVal(e.target.value); setFile(null); setPreview(''); }}
+                placeholder="/images/promo.jpg или https://..."
+                className="admin-input text-sm"
+              />
+            </div>
+            <div className="grid gap-1">
+              <label className="text-xs font-medium text-muted-foreground">Ссылка для перехода</label>
+              <input
+                type="text"
+                value={linkVal}
+                onChange={e => setLinkVal(e.target.value)}
+                placeholder="/catalog или https://..."
+                className="admin-input text-sm"
+              />
+            </div>
+          </div>
+          <button
+            onClick={add}
+            disabled={busy}
+            className={`px-4 py-2 rounded-xl text-sm font-medium ${busy ? 'bg-muted text-muted-foreground' : 'bg-primary text-primary-foreground'}`}
+          >
+            {busy ? 'Загрузка...' : 'Добавить'}
+          </button>
+        </div>
+        <div className="text-xs text-muted-foreground mt-2">JPG/PNG/WebP до 5 МБ. Файл загрузится на сервер, URL сохранится в базе.</div>
+      </div>
+      <div className="grid gap-3">
+        {banners.map((img, idx) => (
+          <div key={`${img.id}-${img.position}-${idx}`} className="grid gap-3 bg-card rounded-2xl p-4 border border-border/40 shadow-sm">
+            <div className="flex items-center gap-4">
+              <img src={resolveMediaUrl(img.url)} alt="" className="w-20 h-16 object-cover rounded-xl border" />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-display">pos: {img.position}</div>
+                <div className="text-xs text-muted-foreground truncate">{img.url}</div>
+              </div>
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={img.active}
+                  onChange={async (e) => {
+                    try {
+                      await store.updatePromoBanner(img.id, { active: e.target.checked });
+                    } catch (err) {
+                      const code = err instanceof Error ? err.message : '';
+                      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                      else toast.error('Не удалось обновить баннер');
+                    }
+                  }}
+                />
+                Активно
+              </label>
+              <div className="flex gap-1.5">
+                <button onClick={async () => {
+                  try {
+                    const newPos = Math.max(0, img.position - 1);
+                    await store.updatePromoBanner(img.id, { position: newPos });
+                  } catch (err) {
+                    const code = err instanceof Error ? err.message : '';
+                    if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                    else toast.error('Не удалось обновить баннер');
+                  }
+                }} className="p-2 rounded-xl hover:bg-muted text-muted-foreground"><ArrowUp size={15} /></button>
+                <button onClick={async () => {
+                  try {
+                    await store.updatePromoBanner(img.id, { position: img.position + 1 });
+                  } catch (err) {
+                    const code = err instanceof Error ? err.message : '';
+                    if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                    else toast.error('Не удалось обновить баннер');
+                  }
+                }} className="p-2 rounded-xl hover:bg-muted text-muted-foreground"><ArrowDown size={15} /></button>
+                <button onClick={async () => {
+                  try {
+                    await store.deletePromoBanner(img.id);
+                    toast.success('Удалено');
+                  } catch (err) {
+                    const code = err instanceof Error ? err.message : '';
+                    if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                    else toast.error('Не удалось удалить баннер');
+                  }
+                }} className="p-2 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={15} /></button>
+              </div>
+            </div>
+            <div className="grid gap-1">
+              <label className="text-xs font-medium text-muted-foreground">Ссылка</label>
+              <input
+                type="text"
+                value={img.link || ''}
+                onChange={e => store.updatePromoBanner(img.id, { link: e.target.value })}
+                placeholder="/catalog или https://..."
+                className="admin-input text-sm"
+              />
+            </div>
+          </div>
+        ))}
+        {banners.length === 0 && <div className="text-sm text-muted-foreground">Пока нет баннеров. Добавьте первый!</div>}
       </div>
     </div>
   );
@@ -751,6 +1038,7 @@ type ProductFormState = {
   descriptionLong: string;
   image: string;
   images: string[];
+  videoUrl: string;
   popularity: number;
   active: boolean;
   packagingMode: 'none' | 'standard' | 'selectable';
@@ -798,6 +1086,7 @@ function ProductForm({ product, categories: cats, badges, packagingOptions, onSa
     descriptionLong: product?.descriptionLong || '',
     image: product?.image || '/images/gift-box.jpg',
     images: product?.images || (product?.image ? [product.image] : [] as string[]),
+    videoUrl: (product as any)?.videoUrl || '',
     popularity: product?.popularity || 5,
     active: product?.active !== false,
     packagingMode: product?.packagingMode || 'none',
@@ -827,6 +1116,7 @@ function ProductForm({ product, categories: cats, badges, packagingOptions, onSa
       }
     }
     let images: string[] = [];
+    let videoUrl = form.videoUrl.trim();
     try {
       for (const u of form.images) {
         if (u.startsWith('data:image/')) {
@@ -840,6 +1130,15 @@ function ProductForm({ product, categories: cats, badges, packagingOptions, onSa
     } catch {
       images = form.images;
     }
+    if (videoUrl.startsWith('data:video/')) {
+      try {
+        const res = await api.uploadProductVideo(videoUrl) as { url: string };
+        videoUrl = res.url;
+      } catch {
+        toast.error('Не удалось загрузить видео');
+        return;
+      }
+    }
     onSave({
       name: form.name.trim(), price: form.price,
       oldPrice: form.oldPrice || undefined,
@@ -847,6 +1146,7 @@ function ProductForm({ product, categories: cats, badges, packagingOptions, onSa
       category: categories[0],
       badge: (form.badge as Product['badge']) || undefined,
       description: form.description.trim(), image: images[0] || form.image, images,
+      videoUrl: videoUrl || null,
       sku: form.sku.trim() || undefined,
       compositionShort: form.compositionShort.trim() || undefined,
       shelfLife: form.shelfLife.trim() || undefined,
@@ -948,6 +1248,9 @@ function ProductForm({ product, categories: cats, badges, packagingOptions, onSa
         <ImageUpload value={form.image} onChange={v => set('image', v)} />
       </div>
       <div className="sm:col-span-2">
+        <VideoUpload value={form.videoUrl} onChange={v => set('videoUrl', v)} />
+      </div>
+      <div className="sm:col-span-2">
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Галерея</label>
         <div className="grid gap-2">
           <div className="flex flex-wrap gap-2">
@@ -1047,7 +1350,7 @@ function PackagingTab({ store }: { store: ReturnType<typeof useStore> }) {
               } else {
                 if (!data.id) { toast.error('Введите ID'); return; }
                 if (store.packagingOptions.some(p => p.id === data.id)) { toast.error('ID уже используется'); return; }
-                await store.addPackagingOption({ id: data.id, name: data.name!, price: data.price!, active: data.active ?? true });
+                await store.addPackagingOption({ id: data.id, name: data.name!, price: data.price!, active: data.active ?? true, image: data.image, images: data.images });
                 toast.success('Упаковка добавлена');
               }
               setEditing(null); setCreating(false);
@@ -1064,7 +1367,11 @@ function PackagingTab({ store }: { store: ReturnType<typeof useStore> }) {
       <div className="grid gap-3">
         {store.packagingOptions.map(p => (
           <div key={p.id} className="flex items-center gap-4 bg-card rounded-2xl p-4 border border-border/40 shadow-sm">
-            <span className="text-2xl w-10 h-10 rounded-xl flex items-center justify-center bg-muted">🎀</span>
+            {p.image || p.images?.length ? (
+              <img src={resolveMediaUrl(p.image || p.images?.[0] || '')} alt="" className="w-10 h-10 rounded-xl object-cover border border-border/50" />
+            ) : (
+              <span className="text-2xl w-10 h-10 rounded-xl flex items-center justify-center bg-muted">🎀</span>
+            )}
             <div className="flex-1 min-w-0">
               <div className="font-display font-semibold text-sm">{p.name}</div>
               <div className="text-xs text-muted-foreground">id: {p.id} · {p.price} ₽</div>
@@ -1116,25 +1423,81 @@ function PackagingForm({ option, onSave, onCancel }: {
   onSave: (data: Partial<PackagingOption> & { id?: string }) => void;
   onCancel: () => void;
 }) {
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
     id: option?.id || '',
     name: option?.name || '',
     price: option?.price || 0,
     active: option?.active ?? true,
+    image: option?.image || '',
+    images: option?.images || [],
   });
   const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }));
+  const setImages = (next: string[]) => setForm(f => ({ ...f, images: next }));
   const isNew = !option;
+  const maxImages = 7;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const addImages = async (files: FileList | null) => {
+    if (!files || !files.length) return;
+    if (form.images.length >= maxImages) { toast.error('Макс. 7 фото'); return; }
+    const list = Array.from(files);
+    const next: string[] = [];
+    for (const file of list) {
+      if (!file.type.startsWith('image/')) { toast.error('Только изображения'); continue; }
+      if (file.size > 5 * 1024 * 1024) { toast.error('Макс. размер 5 МБ'); continue; }
+      try {
+        const dataUrl = await readFileAsDataUrl(file);
+        next.push(dataUrl);
+      } catch {
+        toast.error('Не удалось обработать изображение');
+      }
+    }
+    if (!next.length) return;
+    const space = maxImages - form.images.length;
+    const slice = next.slice(0, space);
+    if (slice.length < next.length) toast.error('Макс. 7 фото');
+    setImages([...form.images, ...slice]);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) { toast.error('Введите название'); return; }
     if (isNew && !form.id.trim()) { toast.error('Введите ID'); return; }
     if (form.price < 0) { toast.error('Цена не может быть отрицательной'); return; }
+    if (form.images.length > maxImages) { toast.error('Макс. 7 фото'); return; }
+    let cover = form.image.trim();
+    let images: string[] = [];
+    try {
+      for (const u of form.images) {
+        if (u.startsWith('data:image/')) {
+          const webpUrl = await toWebpDataUrl(u);
+          const res = await api.uploadProductImage(webpUrl) as { url: string };
+          images.push(res.url);
+        } else {
+          images.push(u);
+        }
+      }
+    } catch {
+      images = form.images;
+    }
+    if (cover.startsWith('data:image/')) {
+      try {
+        const webpUrl = await toWebpDataUrl(cover);
+        const res = await api.uploadProductImage(webpUrl) as { url: string };
+        cover = res.url;
+      } catch {
+        toast.error('Не удалось загрузить обложку');
+        return;
+      }
+    }
+    const fallbackCover = cover || images[0] || '';
     onSave({
       ...(isNew ? { id: form.id.trim().toLowerCase().replace(/\s+/g, '_') } : {}),
       name: form.name.trim(),
       price: Math.round(Number(form.price) || 0),
       active: Boolean(form.active),
+      image: fallbackCover || undefined,
+      images: images.length ? images : undefined,
     });
   };
 
@@ -1149,6 +1512,41 @@ function PackagingForm({ option, onSave, onCancel }: {
       <div className="sm:col-span-2">
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Название</label>
         <input value={form.name} onChange={e => set('name', e.target.value)} maxLength={80} className="admin-input" placeholder="Подарочная упаковка" />
+      </div>
+      <div className="sm:col-span-2">
+        <ImageUpload value={form.image} onChange={v => set('image', v)} />
+      </div>
+      <div className="sm:col-span-2">
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Галерея (до 7 фото)</label>
+        <div className="grid gap-2">
+          <div className="flex flex-wrap gap-2">
+            {form.images.map((u, i) => (
+              <div key={i} className="relative">
+                <img src={resolveMediaUrl(u)} alt="" className="w-20 h-20 object-cover rounded-xl border" />
+                <button type="button" onClick={() => setImages(form.images.filter((_, idx) => idx !== i))}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center">
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => galleryInputRef.current?.click()}
+              className="px-3 py-2 rounded-xl border border-border text-xs text-muted-foreground hover:bg-muted transition-colors flex items-center gap-2">
+              <Upload size={14} />
+              Добавить фото
+            </button>
+            <span className="text-[11px] text-muted-foreground">Добавлено: {form.images.length}/{maxImages}</span>
+            <input
+              ref={galleryInputRef}
+              type="file"
+              multiple
+              accept="image/*"
+              className="hidden"
+              onChange={e => { addImages(e.target.files); e.currentTarget.value = ''; }}
+            />
+          </div>
+        </div>
       </div>
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Цена ₽</label>
@@ -1219,6 +1617,16 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
             <div className="flex-1 min-w-0">
               <span className="font-display font-semibold text-sm">{c.name}</span>
               <span className="text-xs text-muted-foreground ml-2">id: {c.id}</span>
+              {(c.showOnHome || typeof c.homeOrder === 'number') && (
+                <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                  {c.showOnHome && (
+                    <span className="px-2 py-0.5 rounded-full bg-muted">Главная</span>
+                  )}
+                  <span className="px-2 py-0.5 rounded-full bg-muted">
+                    Порядок: {typeof c.homeOrder === 'number' ? c.homeOrder : '—'}
+                  </span>
+                </div>
+              )}
             </div>
             <div className="flex gap-1.5">
               <button onClick={() => { setEditing(c); setCreating(false); }}
@@ -1272,6 +1680,7 @@ function CategoryForm({ category, categories, colorOptions, onSave, onCancel }: 
     color: category?.color || 'candy-pink',
     group: initialGroup,
     showOnHome: category?.showOnHome ?? (baseId ? defaultShowOnHome(baseId) : !initialParentId),
+    homeOrder: category?.homeOrder ?? '',
   });
   const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }));
   const isNew = !category;
@@ -1289,13 +1698,16 @@ function CategoryForm({ category, categories, colorOptions, onSave, onCancel }: 
     const normalizedSlug = form.slug.trim().toLowerCase().replace(/\s+/g, '_');
     const normalizedParent = form.parentId.trim();
     const id = (normalizedParent ? `${normalizedParent}/${normalizedSlug}` : normalizedSlug);
+    const parsedOrder = form.homeOrder === '' ? undefined : Number(form.homeOrder);
+    const homeOrder = Number.isFinite(parsedOrder) ? parsedOrder : undefined;
     onSave({
       ...(id ? { id } : {}),
       name: form.name.trim(),
       emoji: form.emoji,
       color: form.color,
       group: form.group,
-      showOnHome: Boolean(form.showOnHome) && !id.includes('/'),
+      showOnHome: Boolean(form.showOnHome),
+      homeOrder,
     });
   };
 
@@ -1310,7 +1722,7 @@ function CategoryForm({ category, categories, colorOptions, onSave, onCancel }: 
             setForm(f => ({
               ...f,
               parentId: value,
-              showOnHome: value ? false : f.showOnHome,
+              showOnHome: f.showOnHome,
             }));
           }}
           className="admin-input"
@@ -1332,6 +1744,16 @@ function CategoryForm({ category, categories, colorOptions, onSave, onCancel }: 
           <option value="set">Наборы</option>
           <option value="single">Штучные товары</option>
         </select>
+      </div>
+      <div>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Порядок на главной</label>
+        <input
+          type="number"
+          value={form.homeOrder}
+          onChange={e => set('homeOrder', e.target.value === '' ? '' : Number(e.target.value))}
+          className="admin-input"
+          min={0}
+        />
       </div>
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Название</label>
@@ -1846,6 +2268,7 @@ function ArticlesTab({ store }: { store: ReturnType<typeof useStore> }) {
       {(creating || editing) && (
         <ArticleForm
           products={store.products}
+          categories={store.categories}
           article={editing}
           onSave={async (data) => {
             try {
@@ -1906,27 +2329,105 @@ function toSlug(text: string) {
 }
 
 /* ─── Article Form ─── */
-function ArticleForm({ article, onSave, onCancel, products }: {
+function ArticleForm({ article, onSave, onCancel, products, categories }: {
   article: Article | null;
   onSave: (data: Partial<Article>) => void;
   onCancel: () => void;
   products: Product[];
+  categories: Category[];
 }) {
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
     title: article?.title || '', excerpt: article?.excerpt || '',
     content: article?.content || '',
     tag: article?.tag || 'Советы', readTime: article?.readTime || '5 мин',
     image: article?.image || '', slug: article?.slug || '',
     productId: article?.productId ? String(article.productId) : '',
+    categoryId: article?.categoryId || '',
+    images: article?.images || [],
+    videoUrl: article?.videoUrl || '',
   });
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+  const setImages = (next: string[]) => setForm(f => ({ ...f, images: next }));
+  const maxImages = 7;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const addImages = async (files: FileList | null) => {
+    if (!files || !files.length) return;
+    if (form.images.length >= maxImages) { toast.error('Макс. 7 фото'); return; }
+    const list = Array.from(files);
+    const next: string[] = [];
+    for (const file of list) {
+      if (!file.type.startsWith('image/')) { toast.error('Только изображения'); continue; }
+      if (file.size > 5 * 1024 * 1024) { toast.error('Макс. размер 5 МБ'); continue; }
+      try {
+        const dataUrl = await readFileAsDataUrl(file);
+        next.push(dataUrl);
+      } catch {
+        toast.error('Не удалось обработать изображение');
+      }
+    }
+    if (!next.length) return;
+    const space = maxImages - form.images.length;
+    const slice = next.slice(0, space);
+    if (slice.length < next.length) toast.error('Макс. 7 фото');
+    setImages([...form.images, ...slice]);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.title.trim()) { toast.error('Введите заголовок'); return; }
     if (!form.excerpt.trim()) { toast.error('Введите текст статьи'); return; }
     const slug = form.slug.trim() || toSlug(form.title);
-    onSave({ title: form.title.trim(), excerpt: form.excerpt.trim(), content: form.content.trim() || undefined, tag: form.tag, readTime: form.readTime, image: form.image || undefined, slug, productId: form.productId ? Number(form.productId) : undefined });
+    if (form.images.length > 7) { toast.error('Макс. 7 фото'); return; }
+    let cover = form.image.trim();
+    let images: string[] = [];
+    try {
+      for (const u of form.images) {
+        if (u.startsWith('data:image/')) {
+          const webpUrl = await toWebpDataUrl(u);
+          const res = await api.uploadArticleImage(webpUrl) as { url: string };
+          images.push(res.url);
+        } else {
+          images.push(u);
+        }
+      }
+    } catch {
+      images = form.images;
+    }
+    if (cover.startsWith('data:image/')) {
+      try {
+        const webpUrl = await toWebpDataUrl(cover);
+        const res = await api.uploadArticleImage(webpUrl) as { url: string };
+        cover = res.url;
+      } catch {
+        toast.error('Не удалось загрузить обложку');
+        return;
+      }
+    }
+    let videoUrl = form.videoUrl.trim();
+    if (videoUrl.startsWith('data:video/')) {
+      try {
+        const res = await api.uploadArticleVideo(videoUrl) as { url: string };
+        videoUrl = res.url;
+      } catch {
+        toast.error('Не удалось загрузить видео');
+        return;
+      }
+    }
+    const fallbackCover = cover || images[0] || '';
+    onSave({
+      title: form.title.trim(),
+      excerpt: form.excerpt.trim(),
+      content: form.content.trim() || undefined,
+      tag: form.tag,
+      readTime: form.readTime,
+      image: fallbackCover || undefined,
+      images: images.length ? images : undefined,
+      videoUrl: videoUrl || undefined,
+      slug,
+      productId: form.productId ? Number(form.productId) : undefined,
+      categoryId: form.categoryId || undefined,
+    });
   };
 
   return (
@@ -1948,6 +2449,41 @@ function ArticleForm({ article, onSave, onCancel, products }: {
       <div>
         <ImageUpload value={form.image} onChange={v => set('image', v)} />
       </div>
+      <div>
+        <VideoUpload value={form.videoUrl} onChange={v => set('videoUrl', v)} />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Галерея (до 7 фото)</label>
+        <div className="grid gap-2">
+          <div className="flex flex-wrap gap-2">
+            {form.images.map((u, i) => (
+              <div key={i} className="relative">
+                <img src={resolveMediaUrl(u)} alt="" className="w-20 h-20 object-cover rounded-xl border" />
+                <button type="button" onClick={() => setImages(form.images.filter((_, idx) => idx !== i))}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center">
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => galleryInputRef.current?.click()}
+              className="px-3 py-2 rounded-xl border border-border text-xs text-muted-foreground hover:bg-muted transition-colors flex items-center gap-2">
+              <Upload size={14} />
+              Добавить фото
+            </button>
+            <span className="text-[11px] text-muted-foreground">Добавлено: {form.images.length}/{maxImages}</span>
+            <input
+              ref={galleryInputRef}
+              type="file"
+              multiple
+              accept="image/*"
+              className="hidden"
+              onChange={e => { addImages(e.target.files); e.currentTarget.value = ''; }}
+            />
+          </div>
+        </div>
+      </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="text-xs font-medium text-muted-foreground mb-1 block">Тег</label>
@@ -1965,6 +2501,13 @@ function ArticleForm({ article, onSave, onCancel, products }: {
         <select value={form.productId} onChange={e => set('productId', e.target.value)} className="admin-input">
           <option value="">— не выбрано —</option>
           {products.map(p => <option key={p.id} value={p.id}>{p.name} (id: {p.id})</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Связанная категория (опционально)</label>
+        <select value={form.categoryId} onChange={e => set('categoryId', e.target.value)} className="admin-input">
+          <option value="">— не выбрано —</option>
+          {categories.map(c => <option key={c.id} value={c.id}>{c.emoji ? `${c.emoji} ` : ''}{c.name} (id: {c.id})</option>)}
         </select>
       </div>
       <div className="flex gap-2 justify-end">

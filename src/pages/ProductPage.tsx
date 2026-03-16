@@ -46,8 +46,14 @@ export default function ProductPage() {
   const slides = useMemo(() => {
     if (!product) return [];
     const list = product.images && product.images.length ? product.images : [product.image];
-    return list.map((u: string) => resolveMediaUrl(u));
+    const imageUrls = list.map((u: string) => resolveMediaUrl(u));
+    const videoUrl = product.videoUrl ? resolveMediaUrl(product.videoUrl) : '';
+    if (videoUrl) {
+      return [{ type: 'video' as const, url: videoUrl }, ...imageUrls.map((url) => ({ type: 'image' as const, url }))];
+    }
+    return imageUrls.map((url) => ({ type: 'image' as const, url }));
   }, [product]);
+  const posterUrl = useMemo(() => resolveMediaUrl(product?.image), [product?.image]);
 
   const related = useMemo(() => {
     if (!product) return [];
@@ -117,7 +123,7 @@ export default function ProductPage() {
     const title = `${product.name} — МираВкус`;
     const description = product.description?.slice(0, 160) || 'Детские сладости с доставкой по России.';
     const url = `${window.location.origin}/product/${product.id}`;
-    const image = slides[0] ? toAbs(slides[0]) : `${window.location.origin}/images/hero-sweets.jpg`;
+    const image = slides.find(s => s.type === 'image') ? toAbs(slides.find(s => s.type === 'image')!.url) : `${window.location.origin}/images/hero-sweets.jpg`;
     document.title = title;
     setMeta('name', 'description', description);
     setMeta('name', 'robots', 'index, follow');
@@ -202,40 +208,65 @@ export default function ProductPage() {
               <div className="grid md:grid-cols-[92px_1fr] gap-3 items-start">
                 {slides.length > 1 && (
                   <div className="hidden md:flex flex-col gap-2 max-h-[560px] overflow-auto pr-1">
-                    {slides.map((url: string, i: number) => (
+                    {slides.map((slide, i: number) => (
                       <button
-                        key={url + i}
+                        key={slide.url + i}
                         type="button"
                         onClick={() => setIdx(i)}
                         className={`rounded-2xl overflow-hidden border transition ${
                           i === idx ? 'border-primary shadow-sm' : 'border-border/50 hover:border-border'
                         }`}
-                        aria-label={`Фото ${i + 1}`}
+                        aria-label={`Слайд ${i + 1}`}
                       >
-                        <img src={url} alt="" className="w-full aspect-square object-cover" />
+                        {slide.type === 'video' ? (
+                          <video
+                            src={slide.url}
+                            poster={posterUrl || undefined}
+                            className="w-full aspect-square object-cover"
+                            muted
+                            playsInline
+                            preload="metadata"
+                          />
+                        ) : (
+                          <img src={slide.url} alt="" className="w-full aspect-square object-cover" />
+                        )}
                       </button>
                     ))}
                   </div>
                 )}
 
                 <div className="relative rounded-2xl overflow-hidden bg-muted/20">
-                  {slides.map((url: string, i: number) => (
-                    <img
-                      key={url + i}
-                      src={url}
-                      alt={product.name}
-                      className={`w-full aspect-[3/4] max-h-[560px] object-contain transition-opacity duration-700 ${i === idx ? 'opacity-100' : 'opacity-0 absolute inset-0'}`}
-                    />
+                  {slides.map((slide, i: number) => (
+                    slide.type === 'video' ? (
+                      <video
+                        key={slide.url + i}
+                        src={slide.url}
+                        poster={posterUrl || undefined}
+                        className={`w-full aspect-[3/4] max-h-[560px] object-contain transition-opacity duration-700 ${i === idx ? 'opacity-100' : 'opacity-0 absolute inset-0'}`}
+                        muted
+                        loop
+                        playsInline
+                        preload="metadata"
+                        autoPlay={i === idx}
+                      />
+                    ) : (
+                      <img
+                        key={slide.url + i}
+                        src={slide.url}
+                        alt={product.name}
+                        className={`w-full aspect-[3/4] max-h-[560px] object-contain transition-opacity duration-700 ${i === idx ? 'opacity-100' : 'opacity-0 absolute inset-0'}`}
+                      />
+                    )
                   ))}
                   {slides.length > 1 && (
                     <div className="md:hidden absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2 bg-black/20 backdrop-blur rounded-full px-3 py-1.5">
-                      {slides.map((_: string, i: number) => (
+                      {slides.map((_, i: number) => (
                         <button
                           key={i}
                           type="button"
                           onClick={() => setIdx(i)}
                           className={`h-2 rounded-full transition-all ${i === idx ? 'w-6 bg-white' : 'w-2 bg-white/60 hover:bg-white/80'}`}
-                          aria-label={`Фото ${i + 1}`}
+                          aria-label={`Слайд ${i + 1}`}
                         />
                       ))}
                     </div>

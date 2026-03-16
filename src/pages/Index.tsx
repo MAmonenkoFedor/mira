@@ -139,7 +139,16 @@ const Index = () => {
 
   const homeCategories = useMemo(() => {
     const list = store.categories || [];
-    return list.filter(c => (c.showOnHome ?? (!c.id.includes('/') && c.id !== 'packaging')) && productCategoryIds.has(c.id));
+    const withIndex = list.map((c, index) => ({ c, index }));
+    return withIndex
+      .filter(({ c }) => (c.showOnHome ?? (!c.id.includes('/') && c.id !== 'packaging')) && productCategoryIds.has(c.id))
+      .sort((a, b) => {
+        const ao = typeof a.c.homeOrder === 'number' ? a.c.homeOrder : Number.POSITIVE_INFINITY;
+        const bo = typeof b.c.homeOrder === 'number' ? b.c.homeOrder : Number.POSITIVE_INFINITY;
+        if (ao !== bo) return ao - bo;
+        return a.index - b.index;
+      })
+      .map(({ c }) => c);
   }, [store.categories, productCategoryIds]);
 
   return (
@@ -157,6 +166,9 @@ const Index = () => {
         <Products
           activeCategory={activeCategory}
           onAddToCart={handleAddToCart}
+          layout="grouped"
+          groupedCategories={homeCategories}
+          applyCategoryFilter={false}
         />
         <Reviews />
         <Benefits />

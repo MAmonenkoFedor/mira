@@ -39,7 +39,7 @@ export default function Articles() {
                 <div className="h-2 bg-gradient-to-r from-primary/60 via-accent/40 to-secondary/50" />
                 <div className="relative">
                   <img
-                    src={resolveMediaUrl(a.image || '/images/hero-sweets.jpg')}
+                    src={resolveMediaUrl(a.image || a.images?.[0] || '/images/hero-sweets.jpg')}
                     alt={a.title}
                     className="w-full h-44 object-cover bg-muted"
                     loading="lazy"
