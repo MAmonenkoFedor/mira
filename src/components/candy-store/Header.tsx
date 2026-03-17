@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { ShoppingCart, Menu, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { ShoppingCart, Menu, X, Search, ChevronDown, Heart, User, ShieldCheck } from 'lucide-react';
+import { useStore } from './useStore';
 
 interface HeaderProps {
   cartCount: number;
@@ -19,13 +20,19 @@ const navLinks = [
 
 export default function Header({ cartCount, onCartClick }: HeaderProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const catalogRef = useRef<HTMLDivElement>(null);
+  const mobileSearchRef = useRef<HTMLInputElement>(null);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { categories, products, badges } = useStore();
   const logoCandidates = useMemo(
     () => ['/logo.png', '/logo.webp', '/logo.svg', '/images/logo.png', '/images/logo.webp', '/images/logo.svg'],
     []
   );
   const [logoSrc, setLogoSrc] = useState(logoCandidates[0]);
   const [logoFailed, setLogoFailed] = useState(false);
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     const raw = location.hash;
@@ -39,10 +46,71 @@ export default function Header({ cartCount, onCartClick }: HeaderProps) {
     });
   }, [location.hash, location.pathname]);
 
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (!catalogRef.current) return;
+      if (catalogRef.current.contains(e.target as Node)) return;
+      setCatalogOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const next = params.get('search') || '';
+    setQuery(next);
+  }, [location.search]);
+
+  const submitSearch = (value?: string) => {
+    const q = (value ?? query).trim();
+    navigate(q ? `/catalog?search=${encodeURIComponent(q)}` : '/catalog');
+  };
+
+  const productCategoryIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of products) {
+      if (p.active === false) continue;
+      const anyP = p as any;
+      const ids: string[] = Array.isArray(anyP?.categories) && anyP.categories.length
+        ? anyP.categories.filter(Boolean).map((x: unknown) => String(x))
+        : (anyP?.category ? [String(anyP.category)] : []);
+      for (const id of ids) {
+        const parts = id.split('/');
+        for (let i = 0; i < parts.length; i += 1) {
+          set.add(parts.slice(0, i + 1).join('/'));
+        }
+      }
+    }
+    return set;
+  }, [products]);
+
+  const catalogCategories = useMemo(() => {
+    const list = (categories || []).filter(c => c.id !== 'packaging' && productCategoryIds.has(c.id));
+    const find = (pred: (c: any) => boolean) => list.find(pred);
+    const picks = [
+      find(c => c.id.includes('asian') || /азиат/i.test(c.name)),
+      find(c => c.id === 'gift' || /подароч/i.test(c.name)),
+      find(c => c.id.includes('truffle') || /трюф/i.test(c.name)),
+    ].filter(Boolean);
+    const uniq = new Map<string, any>();
+    for (const c of picks) uniq.set(c.id, c);
+    if (uniq.size < 3) {
+      for (const c of list) {
+        if (uniq.size >= 6) break;
+        if (!uniq.has(c.id) && !c.id.includes('/')) uniq.set(c.id, c);
+      }
+    }
+    return Array.from(uniq.values());
+  }, [categories, productCategoryIds]);
+
+  const hasSale = useMemo(() => badges.some(b => b.id === 'sale' && b.active !== false), [badges]);
+  const hasNew = useMemo(() => badges.some(b => b.id === 'new' && b.active !== false), [badges]);
+
   return (
     <header className="sticky top-0 z-50 bg-card/90 backdrop-blur-md border-b border-border/60 shadow-sm">
-      <div className="container flex items-center justify-between h-16 md:h-18">
-        <Link to="/" className="font-display text-xl md:text-2xl font-bold text-primary flex items-center gap-2">
+      <div className="container flex items-center gap-4 h-16 md:h-18">
+        <Link to="/" className="font-display text-xl md:text-2xl font-bold text-primary flex items-center gap-2 shrink-0">
           {!logoFailed ? (
             <img
               src={logoSrc}
@@ -61,33 +129,123 @@ export default function Header({ cartCount, onCartClick }: HeaderProps) {
           <span>МираВкус</span>
         </Link>
 
-        <nav className="hidden md:flex items-center gap-6">
-          {navLinks.map(l => (
-            <Link
-              key={l.href}
-              to={l.href}
-              className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors duration-200"
+        <div className="hidden md:flex items-center gap-3 flex-1">
+          <div ref={catalogRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setCatalogOpen(v => !v)}
+              className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-primary text-primary-foreground font-display font-medium text-sm hover:scale-[1.02] active:scale-95 transition-transform"
+              aria-expanded={catalogOpen}
+              aria-haspopup="menu"
             >
-              {l.label}
-            </Link>
-          ))}
-        </nav>
+              <Menu size={16} />
+              Каталог
+              <ChevronDown size={16} />
+            </button>
+            {catalogOpen && (
+              <div className="absolute left-0 mt-2 w-[320px] rounded-3xl border border-border/60 bg-card shadow-lg p-4 z-50">
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">Разделы</div>
+                <div className="grid grid-cols-1 gap-1 mb-3">
+                  {hasSale && (
+                    <Link
+                      to="/catalog?badge=sale"
+                      onClick={() => setCatalogOpen(false)}
+                      className="px-3 py-2 rounded-2xl text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors"
+                    >
+                      Скидки
+                    </Link>
+                  )}
+                  <Link
+                    to="/catalog?sort=popular"
+                    onClick={() => setCatalogOpen(false)}
+                    className="px-3 py-2 rounded-2xl text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors"
+                  >
+                    Хиты продаж
+                  </Link>
+                  {hasNew && (
+                    <Link
+                      to="/catalog?badge=new"
+                      onClick={() => setCatalogOpen(false)}
+                      className="px-3 py-2 rounded-2xl text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors"
+                    >
+                      Новинки
+                    </Link>
+                  )}
+                </div>
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">Категории</div>
+                <div className="grid grid-cols-1 gap-1">
+                  {catalogCategories.map(c => (
+                    <Link
+                      key={c.id}
+                      to={`/catalog?category=${encodeURIComponent(c.id)}`}
+                      onClick={() => setCatalogOpen(false)}
+                      className="px-3 py-2 rounded-2xl text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors"
+                    >
+                      {c.name}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="relative flex-1">
+            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') submitSearch(); }}
+              placeholder="Найти сладости, подарки..."
+              className="w-full pl-11 pr-4 py-2.5 rounded-2xl bg-card border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 transition"
+              aria-label="Поиск по каталогу"
+            />
+          </div>
+        </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 ml-auto">
+          <Link
+            to="/account"
+            className="hidden md:inline-flex p-2 rounded-xl text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors"
+            aria-label="Избранное"
+          >
+            <Heart size={18} />
+          </Link>
           <button
             onClick={onCartClick}
-            className="relative flex items-center gap-2 px-4 py-2.5 rounded-full bg-primary text-primary-foreground font-display font-medium text-sm hover:scale-105 active:scale-95 transition-transform duration-200"
+            className="relative p-2 rounded-xl text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors"
             aria-label="Открыть корзину"
           >
             <ShoppingCart size={18} />
-            <span className="hidden sm:inline">Корзина</span>
             {cartCount > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-accent text-accent-foreground text-xs font-bold flex items-center justify-center">
+              <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-accent text-accent-foreground text-[11px] font-bold flex items-center justify-center">
                 {cartCount}
               </span>
             )}
           </button>
+          <button
+            className="hidden md:inline-flex p-2 rounded-xl text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors"
+            aria-label="Гарантии"
+          >
+            <ShieldCheck size={18} />
+          </button>
+          <Link
+            to="/account"
+            className="hidden md:inline-flex p-2 rounded-xl text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors"
+            aria-label="Профиль"
+          >
+            <User size={18} />
+          </Link>
 
+          <button
+            onClick={() => {
+              setMobileOpen(true);
+              requestAnimationFrame(() => mobileSearchRef.current?.focus());
+            }}
+            className="md:hidden p-2 rounded-xl text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors"
+            aria-label="Поиск"
+          >
+            <Search size={20} />
+          </button>
           <button
             onClick={() => setMobileOpen(v => !v)}
             className="md:hidden p-2 rounded-xl text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors"
@@ -102,6 +260,41 @@ export default function Header({ cartCount, onCartClick }: HeaderProps) {
       {mobileOpen && (
         <nav className="md:hidden border-t border-border/40 bg-card/95 backdrop-blur-md animate-in slide-in-from-top-2 duration-200">
           <div className="container py-3 flex flex-col gap-1">
+            <div className="px-2 pb-1">
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  to="/account"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-2xl text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors"
+                >
+                  <Heart size={16} />
+                  Избранное
+                </Link>
+                <Link
+                  to="/account"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-2xl text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors"
+                >
+                  <User size={16} />
+                  Кабинет
+                </Link>
+              </div>
+            </div>
+            <div className="px-2 pb-2">
+              <div className="relative">
+                <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  ref={mobileSearchRef}
+                  type="text"
+                  value={query}
+                  onChange={e => setQuery(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { submitSearch(); setMobileOpen(false); } }}
+                  placeholder="Найти сладости, подарки..."
+                  className="w-full pl-11 pr-4 py-2.5 rounded-2xl bg-card border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 transition"
+                  aria-label="Поиск по каталогу"
+                />
+              </div>
+            </div>
             {navLinks.map(l => (
               <Link
                 key={l.href}

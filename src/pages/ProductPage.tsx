@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Minus, Plus, Tag } from 'lucide-react';
+import { Heart, Minus, Plus, Tag } from 'lucide-react';
 import Header from '@/components/candy-store/Header';
 import Footer from '@/components/candy-store/Footer';
 import CartDrawer from '@/components/candy-store/CartDrawer';
@@ -19,7 +19,7 @@ export default function ProductPage() {
   const NONE_VALUE = '__none__';
   const { id } = useParams<{ id: string }>();
   const cart = useCart();
-  const { products, categories, badges, packagingOptions } = useStore();
+  const { products, categories, badges, packagingOptions, toggleFavorite, isFavorite } = useStore();
 
   const productId = Number(id);
   const product = useMemo<Product | null>(() => {
@@ -54,6 +54,7 @@ export default function ProductPage() {
     return imageUrls.map((url) => ({ type: 'image' as const, url }));
   }, [product]);
   const posterUrl = useMemo(() => resolveMediaUrl(product?.image), [product?.image]);
+  const favorite = product ? isFavorite(product.id) : false;
 
   const related = useMemo(() => {
     if (!product) return [];
@@ -423,16 +424,26 @@ export default function ProductPage() {
                 </button>
               </div>
 
-              <button
-                onClick={() => {
-                  cart.addItem(product, qty, product.packagingMode === 'selectable' ? (selectedPackagingId || null) : undefined);
-                  toast.success('Добавлено!', { description: product.name, duration: 2000 });
-                  cart.setIsCartOpen(true);
-                }}
-                className="flex-1 py-3.5 rounded-full bg-primary text-primary-foreground font-display font-semibold hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200 shadow-soft"
-              >
-                Заказать
-              </button>
+              <div className="flex flex-1 items-center gap-3">
+                <button
+                  onClick={() => {
+                    cart.addItem(product, qty, product.packagingMode === 'selectable' ? (selectedPackagingId || null) : undefined);
+                    toast.success('Добавлено!', { description: product.name, duration: 2000 });
+                    cart.setIsCartOpen(true);
+                  }}
+                  className="flex-1 py-3.5 rounded-full bg-primary text-primary-foreground font-display font-semibold hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200 shadow-soft"
+                >
+                  Заказать
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleFavorite(product.id)}
+                  className={`w-12 h-12 rounded-full border flex items-center justify-center transition-colors ${favorite ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-primary hover:bg-muted/60'}`}
+                  aria-label={favorite ? 'Убрать из избранного' : 'Добавить в избранное'}
+                >
+                  <Heart size={18} fill={favorite ? 'currentColor' : 'none'} />
+                </button>
+              </div>
             </div>
           </div>
         </div>

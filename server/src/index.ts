@@ -44,10 +44,18 @@ app.get("/health", async (_req, res) => {
 });
 
 async function signToken(adminId: number, email: string) {
-  return new SignJWT({ sub: String(adminId), email })
+  return new SignJWT({ sub: String(adminId), email, role: "admin" })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
+    .sign(jwtSecret);
+}
+
+async function signCustomerToken(customerId: number, phone: string | null, email: string | null) {
+  return new SignJWT({ sub: String(customerId), phone: phone ?? undefined, email: email ?? undefined, role: "customer" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("30d")
     .sign(jwtSecret);
 }
 
@@ -135,7 +143,36 @@ async function ensureAdminExists() {
   }
 }
 
+async function ensureTestCustomerExists() {
+  const rawPhone = process.env.TEST_CUSTOMER_PHONE || "+79000000000";
+  const rawEmail = process.env.TEST_CUSTOMER_EMAIL || "test@miravkus.local";
+  const password = process.env.TEST_CUSTOMER_PASSWORD || "test1234";
+  const phone = rawPhone ? rawPhone.replace(/[^\d+]/g, "") : null;
+  const email = rawEmail ? rawEmail.trim().toLowerCase() : null;
+  if (!phone && !email) return;
+  const { rows } = await pool.query(
+    "select id from customers where ($1::text is not null and phone=$1) or ($2::text is not null and email=$2) limit 1",
+    [phone, email]
+  );
+  const hash = await bcrypt.hash(password, 10);
+  if (rows[0]) {
+    await pool.query(
+      "update customers set password_hash=$2, phone=coalesce($3,phone), email=coalesce($4,email) where id=$1",
+      [rows[0].id, hash, phone, email]
+    );
+    console.log(`test customer updated: ${phone ?? "no-phone"} / ${email ?? "no-email"}`);
+    return;
+  }
+  await pool.query("insert into customers(phone,email,password_hash) values($1,$2,$3)", [phone, email, hash]);
+  console.log(`test customer created: ${phone ?? "no-phone"} / ${email ?? "no-email"}`);
+}
+
 const AuthSchema = z.object({ email: z.string().email(), password: z.string().min(6) });
+const CustomerRequestSchema = z.object({
+  phone: z.string().optional(),
+  email: z.string().email().optional(),
+}).refine(v => Boolean(v.phone || v.email), { message: "phone_or_email_required" });
+const CustomerLoginSchema = z.object({ login: z.string().min(3), password: z.string().min(6) });
 const FooterSchema = z.object({
   brandEmoji: z.string().min(1),
   brandName: z.string().min(1),
@@ -183,6 +220,62 @@ app.post("/api/auth/login", rateLimitMiddleware(10, 15 * 60 * 1000), async (req,
   }
 });
 
+app.post("/api/customer/request-password", rateLimitMiddleware(5, 15 * 60 * 1000), async (req, res) => {
+  try {
+    const data = CustomerRequestSchema.parse(req.body);
+    const phone = data.phone ? data.phone.replace(/[^\d+]/g, "") : null;
+    const email = data.email ? data.email.trim().toLowerCase() : null;
+    const code = String((crypto.getRandomValues(new Uint32Array(1))[0] % 900000) + 100000);
+    const hash = await bcrypt.hash(code, 10);
+    const { rows } = await pool.query(
+      "select id,phone,email from customers where (phone=$1 and $1 is not null) or (email=$2 and $2 is not null) limit 1",
+      [phone, email]
+    );
+    const existing = rows[0];
+    if (existing) {
+      await pool.query(
+        "update customers set password_hash=$2, phone=coalesce($3,phone), email=coalesce($4,email) where id=$1",
+        [existing.id, hash, phone, email]
+      );
+    } else {
+      await pool.query(
+        "insert into customers(phone,email,password_hash) values($1,$2,$3)",
+        [phone, email, hash]
+      );
+    }
+    if (phone) {
+      await sendSms(phone, `Пароль для входа: ${code}`);
+    }
+    if (email) {
+      await sendMail(email, "Пароль для входа", `Ваш пароль: ${code}`, `<p>Ваш пароль: <strong>${code}</strong></p>`);
+    }
+    res.json({ ok: true });
+  } catch {
+    res.status(400).json({ error: "bad_request" });
+  }
+});
+
+app.post("/api/customer/login", rateLimitMiddleware(10, 15 * 60 * 1000), async (req, res) => {
+  try {
+    const { login, password } = CustomerLoginSchema.parse(req.body);
+    const trimmed = login.trim();
+    const email = trimmed.includes("@") ? trimmed.toLowerCase() : null;
+    const phone = !email ? trimmed.replace(/[^\d+]/g, "") : null;
+    const { rows } = await pool.query(
+      "select id,phone,email,password_hash from customers where (phone=$1 and $1 is not null) or (email=$2 and $2 is not null) limit 1",
+      [phone, email]
+    );
+    const customer = rows[0];
+    if (!customer || !customer.password_hash) return res.status(401).json({ error: "invalid_credentials" });
+    const ok = await bcrypt.compare(password, customer.password_hash);
+    if (!ok) return res.status(401).json({ error: "invalid_credentials" });
+    const token = await signCustomerToken(customer.id, customer.phone ?? null, customer.email ?? null);
+    res.json({ token, customer: { phone: customer.phone ?? null, email: customer.email ?? null } });
+  } catch {
+    res.status(400).json({ error: "bad_request" });
+  }
+});
+
 function requireAuth(handler: express.RequestHandler): express.RequestHandler {
   return async (req, res, next) => {
     try {
@@ -190,6 +283,21 @@ function requireAuth(handler: express.RequestHandler): express.RequestHandler {
       const token = hdr?.startsWith("Bearer ") ? hdr.slice(7) : null;
       if (!token) return res.status(401).json({ error: "unauthorized" });
       await verifyToken(token);
+      return handler(req, res, next);
+    } catch {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+  };
+}
+
+function requireCustomerAuth(handler: express.RequestHandler): express.RequestHandler {
+  return async (req, res, next) => {
+    try {
+      const hdr = req.headers.authorization;
+      const token = hdr?.startsWith("Bearer ") ? hdr.slice(7) : null;
+      if (!token) return res.status(401).json({ error: "unauthorized" });
+      const payload = await verifyToken(token);
+      if (payload.role !== "customer") return res.status(401).json({ error: "unauthorized" });
       return handler(req, res, next);
     } catch {
       return res.status(401).json({ error: "unauthorized" });
@@ -827,7 +935,7 @@ const OrderSchema = z.object({
   total: z.number().int(),
   discount: z.number().int(),
   promo: z.string().nullable().optional(),
-  contact: z.object({ name: z.string(), phone: z.string() }),
+  contact: z.object({ name: z.string(), phone: z.string(), email: z.string().email().optional() }),
   delivery: z.object({ address: z.string(), method: z.string(), payment: z.string() }),
 });
 
@@ -845,13 +953,14 @@ app.post("/api/orders", async (req, res) => {
   try {
     await client.query("begin");
     const { rows } = await client.query(
-      "insert into orders(total,discount,promo,contact_name,contact_phone,delivery_address,delivery_method,payment_method,status) values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id",
+      "insert into orders(total,discount,promo,contact_name,contact_phone,contact_email,delivery_address,delivery_method,payment_method,status) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id",
       [
         o.total,
         o.discount,
         o.promo ?? null,
         o.contact.name,
         o.contact.phone,
+        o.contact.email ?? null,
         o.delivery.address,
         o.delivery.method,
         o.delivery.payment,
@@ -893,6 +1002,7 @@ app.get("/api/orders", requireAuth(async (_req, res) => {
       o.promo,
       o.contact_name,
       o.contact_phone,
+      o.contact_email,
       o.delivery_address,
       o.delivery_method,
       o.payment_method,
@@ -926,7 +1036,69 @@ app.get("/api/orders", requireAuth(async (_req, res) => {
     total: r.total,
     discount: r.discount,
     promo: r.promo ?? undefined,
-    contact: { name: r.contact_name, phone: r.contact_phone },
+    contact: { name: r.contact_name, phone: r.contact_phone, email: r.contact_email ?? undefined },
+    delivery: { address: r.delivery_address, method: r.delivery_method, payment: r.payment_method },
+    createdAt: r.created_at,
+    status: r.status,
+    deliveryStatus: r.delivery_status ?? undefined,
+    deliveryProvider: r.delivery_provider ?? undefined,
+    trackingNumber: r.tracking_number ?? undefined,
+    items: r.items ?? [],
+  })));
+}));
+
+app.get("/api/customer/orders", requireCustomerAuth(async (req, res) => {
+  const hdr = req.headers.authorization!;
+  const token = hdr.slice(7);
+  const payload = await verifyToken(token);
+  const phone = payload.phone ? String(payload.phone) : null;
+  const email = payload.email ? String(payload.email) : null;
+  if (!phone && !email) return res.json([]);
+  const { rows } = await pool.query(
+    `select
+      o.id,
+      o.total,
+      o.discount,
+      o.promo,
+      o.contact_name,
+      o.contact_phone,
+      o.contact_email,
+      o.delivery_address,
+      o.delivery_method,
+      o.payment_method,
+      o.created_at,
+      o.status,
+      o.delivery_status,
+      o.delivery_provider,
+      o.tracking_number,
+      coalesce(
+        json_agg(
+          json_build_object(
+            'id', oi.id,
+            'productId', oi.product_id,
+            'name', oi.name,
+            'quantity', oi.quantity,
+            'price', oi.price,
+            'packagingId', oi.packaging_id,
+            'packagingName', oi.packaging_name,
+            'packagingPrice', oi.packaging_price
+          )
+        ) filter (where oi.id is not null),
+        '[]'
+      ) as items
+    from orders o
+    left join order_items oi on oi.order_id = o.id
+    where ($1::text is not null and o.contact_phone = $1) or ($2::text is not null and o.contact_email = $2)
+    group by o.id
+    order by o.id desc`,
+    [phone, email]
+  );
+  res.json(rows.map((r: any) => ({
+    id: r.id,
+    total: r.total,
+    discount: r.discount,
+    promo: r.promo ?? undefined,
+    contact: { name: r.contact_name, phone: r.contact_phone, email: r.contact_email ?? undefined },
     delivery: { address: r.delivery_address, method: r.delivery_method, payment: r.payment_method },
     createdAt: r.created_at,
     status: r.status,
@@ -980,6 +1152,26 @@ app.post("/api/auth/change-password", rateLimitMiddleware(10, 15 * 60 * 1000), r
     if (!ok) return res.status(400).json({ error: "invalid_password" });
     const hash = await bcrypt.hash(data.newPassword, 10);
     await pool.query(`update admins set password_hash=$2 where id=$1`, [admin.id, hash]);
+    res.json({ ok: true });
+  } catch {
+    res.status(400).json({ error: "bad_request" });
+  }
+}));
+
+app.post("/api/customer/change-password", rateLimitMiddleware(10, 15 * 60 * 1000), requireCustomerAuth(async (req, res) => {
+  try {
+    const data = ChangePasswordSchema.parse(req.body);
+    const hdr = req.headers.authorization!;
+    const token = hdr.slice(7);
+    const payload = await verifyToken(token);
+    const id = Number(payload.sub);
+    const { rows } = await pool.query(`select id,password_hash from customers where id=$1`, [id]);
+    const customer = rows[0];
+    if (!customer || !customer.password_hash) return res.status(401).json({ error: "unauthorized" });
+    const ok = await bcrypt.compare(data.currentPassword, customer.password_hash);
+    if (!ok) return res.status(400).json({ error: "invalid_password" });
+    const hash = await bcrypt.hash(data.newPassword, 10);
+    await pool.query(`update customers set password_hash=$2 where id=$1`, [customer.id, hash]);
     res.json({ ok: true });
   } catch {
     res.status(400).json({ error: "bad_request" });
@@ -1051,6 +1243,7 @@ async function start() {
   await migrate(pool);
   await seedIfEmpty(pool);
   await ensureAdminExists();
+  await ensureTestCustomerExists();
   const port = Number(process.env.PORT || 3001);
   app.listen(port, "0.0.0.0", () => {
     console.log(`server on ${port}`);

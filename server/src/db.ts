@@ -88,6 +88,7 @@ export async function migrate(pool: Pool) {
       promo text,
       contact_name text not null,
       contact_phone text not null,
+      contact_email text,
       delivery_address text not null,
       delivery_method text not null,
       payment_method text not null,
@@ -98,6 +99,16 @@ export async function migrate(pool: Pool) {
   await pool.query(`alter table orders add column if not exists delivery_status text`);
   await pool.query(`alter table orders add column if not exists delivery_provider text`);
   await pool.query(`alter table orders add column if not exists tracking_number text`);
+  await pool.query(`alter table orders add column if not exists contact_email text`);
+  await pool.query(`
+    create table if not exists customers(
+      id serial primary key,
+      phone text unique,
+      email text unique,
+      password_hash text,
+      created_at timestamptz not null default now()
+    );
+  `);
   await pool.query(`
     create table if not exists order_items(
       id serial primary key,

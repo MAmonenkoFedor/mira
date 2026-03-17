@@ -1,4 +1,4 @@
-import { getToken } from "./auth";
+import { getCustomerToken, getToken } from "./auth";
 
 function resolveBase(): string {
   const envBase = (import.meta as any).env?.VITE_API_URL || "";
@@ -37,6 +37,13 @@ async function j<T>(res: Response | Promise<Response>): Promise<T> {
 
 function withAuth(init?: RequestInit): RequestInit {
   const t = getToken();
+  const headers = new Headers(init?.headers || {});
+  if (t) headers.set("Authorization", `Bearer ${t}`);
+  return { ...init, headers };
+}
+
+function withCustomerAuth(init?: RequestInit): RequestInit {
+  const t = getCustomerToken();
   const headers = new Headers(init?.headers || {});
   if (t) headers.set("Authorization", `Bearer ${t}`);
   return { ...init, headers };
@@ -162,6 +169,15 @@ export const api = {
   },
   async createOrder(o: any) {
     return j(fetch(`${base}/api/orders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(o) }));
+  },
+  async requestCustomerPassword(data: { phone?: string; email?: string }) {
+    return j(fetch(`${base}/api/customer/request-password`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }));
+  },
+  async getCustomerOrders() {
+    return j(fetch(`${base}/api/customer/orders`, withCustomerAuth()));
+  },
+  async changeCustomerPassword(currentPassword: string, newPassword: string) {
+    return j(fetch(`${base}/api/customer/change-password`, withCustomerAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword, newPassword }) })));
   },
   async changePassword(currentPassword: string, newPassword: string) {
     return j(fetch(`${base}/api/auth/change-password`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword, newPassword }) })));

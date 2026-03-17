@@ -16,6 +16,9 @@ interface ProductsProps {
   categoryFilterMode?: 'exact' | 'hierarchy';
   layout?: 'grid' | 'grouped';
   groupedCategories?: Category[];
+  initialSearch?: string;
+  initialBadge?: string;
+  initialSort?: SortKey;
 }
 
 export default function Products({
@@ -26,6 +29,9 @@ export default function Products({
   categoryFilterMode = 'exact',
   layout = 'grid',
   groupedCategories,
+  initialSearch,
+  initialBadge,
+  initialSort,
 }: ProductsProps) {
   const { products, badges } = useStore();
   const [search, setSearch] = useState('');
@@ -52,6 +58,25 @@ export default function Products({
       setBadgeFilter('all');
     }
   }, [activeBadges, badgeFilter]);
+
+  useEffect(() => {
+    if (typeof initialSearch === 'string') {
+      setSearch(initialSearch);
+    }
+  }, [initialSearch]);
+
+  useEffect(() => {
+    if (!initialBadge) return;
+    if (initialBadge === 'all') { setBadgeFilter('all'); return; }
+    if (activeBadges.some(b => b.id === initialBadge)) {
+      setBadgeFilter(initialBadge);
+    }
+  }, [initialBadge, activeBadges]);
+
+  useEffect(() => {
+    if (!initialSort) return;
+    setSort(initialSort);
+  }, [initialSort]);
 
   const filtered = useMemo(() => {
     let list = [...baseList];

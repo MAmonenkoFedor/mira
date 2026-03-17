@@ -1,5 +1,5 @@
 /* store v2 */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { api } from '@/lib/api';
 import { getToken } from '@/lib/auth';
 import { products as defaultProducts, categories as defaultCategories, badges as defaultBadges, packagingOptions as defaultPackagingOptions, footerData, type FooterData, type Product, type Category, type Promo, type Badge, type PackagingOption, type PromoBanner } from './data';
@@ -26,7 +26,7 @@ export interface Order {
   total: number;
   discount: number;
   promo?: string;
-  contact: { name: string; phone: string };
+  contact: { name: string; phone: string; email?: string };
   delivery: { address: string; method: string; payment: string };
   createdAt?: string;
   status?: string;
@@ -108,6 +108,10 @@ export function useStore() {
     return loaded as PackagingOption[];
   });
   const [orders, setOrders] = useState<Order[]>(() => load('candy_orders', []));
+  const [favorites, setFavorites] = useState<number[]>(() => {
+    const loaded = load('candy_favorites', []);
+    return Array.isArray(loaded) ? loaded.map((v: unknown) => Number(v)).filter(v => Number.isFinite(v)) : [];
+  });
   const [footer, setFooter] = useState<FooterData>(() => load('candy_footer', footerData));
   const [apiReady, setApiReady] = useState<boolean>(false);
   const [promos, setPromos] = useState<Promo[]>([]);
@@ -120,6 +124,7 @@ export function useStore() {
   useEffect(() => save('candy_badges', badges), [badges]);
   useEffect(() => save('candy_packaging', packagingOptions), [packagingOptions]);
   useEffect(() => save('candy_orders', orders), [orders]);
+  useEffect(() => save('candy_favorites', favorites), [favorites]);
   useEffect(() => save('candy_footer', footer), [footer]);
 
   useEffect(() => {
@@ -334,6 +339,7 @@ export function useStore() {
     setPromoBanners([]);
     setBadges(defaultBadges);
     setOrders([]);
+    setFavorites([]);
     setFooter(footerData);
   }, []);
 
@@ -386,6 +392,19 @@ export function useStore() {
     setOrders(prev => prev.map(o => o.id === id ? { ...o, ...data } : o));
   }, [apiReady]);
 
+  const toggleFavorite = useCallback((id: number) => {
+    setFavorites(prev => prev.includes(id) ? prev.filter(x => x !== id) : [id, ...prev]);
+  }, []);
+
+  const isFavorite = useCallback((id: number) => favorites.includes(id), [favorites]);
+
+  const favoriteProducts = useMemo(() => {
+    const map = new Map(products.map(p => [p.id, p]));
+    return favorites
+      .map(id => map.get(id))
+      .filter((p): p is Product => Boolean(p && (p.active ?? true)));
+  }, [favorites, products]);
+
   const updateFooter = useCallback(async (data: FooterData) => {
     if (apiReady) {
       await api.updateFooter(data);
@@ -394,7 +413,7 @@ export function useStore() {
   }, [apiReady]);
 
   return {
-    products, categories, packagingOptions, articles, promos, heroImages, promoBanners, badges, orders, footer,
+    products, categories, packagingOptions, articles, promos, heroImages, promoBanners, badges, orders, favorites, favoriteProducts, footer,
     addProduct, updateProduct, deleteProduct,
     addCategory, updateCategory, deleteCategory,
     addPackagingOption, updatePackagingOption, deletePackagingOption,
@@ -404,6 +423,7 @@ export function useStore() {
     addPromoBanner, updatePromoBanner, deletePromoBanner,
     addBadge, updateBadge, deleteBadge,
     updateOrder,
+    toggleFavorite, isFavorite,
     updateFooter,
     resetToDefaults,
   };

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ShoppingCart } from 'lucide-react';
+import { Heart, ShoppingCart } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Product, badgeToneClasses } from './data';
 import { resolveMediaUrl } from '@/lib/api';
@@ -13,8 +13,9 @@ interface ProductCardProps {
 
 export default function ProductCard({ product, onAdd }: ProductCardProps) {
   const NONE_VALUE = '__none__';
-  const { badges, packagingOptions } = useStore();
+  const { badges, packagingOptions, toggleFavorite, isFavorite } = useStore();
   const navigate = useNavigate();
+  const favorite = isFavorite(product.id);
   const slides = useMemo(() => {
     const list = product.images && product.images.length ? product.images : [product.image];
     const imageUrls = list.map((u) => resolveMediaUrl(u));
@@ -123,17 +124,29 @@ export default function ProductCard({ product, onAdd }: ProductCardProps) {
               <span className="text-sm text-muted-foreground line-through">{product.oldPrice} ₽</span>
             )}
           </div>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              const packagingArg = product.packagingMode === 'selectable' ? (selectedPackagingId || null) : undefined;
-              onAdd(product, packagingArg);
-            }}
-            className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:scale-110 active:scale-90 transition-transform duration-200"
-            aria-label={`Добавить ${product.name} в корзину`}
-          >
-            <ShoppingCart size={16} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleFavorite(product.id);
+              }}
+              className={`w-10 h-10 rounded-full border flex items-center justify-center transition-colors ${favorite ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-primary hover:bg-muted/60'}`}
+              aria-label={favorite ? `Убрать ${product.name} из избранного` : `Добавить ${product.name} в избранное`}
+            >
+              <Heart size={16} fill={favorite ? 'currentColor' : 'none'} />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const packagingArg = product.packagingMode === 'selectable' ? (selectedPackagingId || null) : undefined;
+                onAdd(product, packagingArg);
+              }}
+              className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:scale-110 active:scale-90 transition-transform duration-200"
+              aria-label={`Добавить ${product.name} в корзину`}
+            >
+              <ShoppingCart size={16} />
+            </button>
+          </div>
         </div>
       </div>
     </article>

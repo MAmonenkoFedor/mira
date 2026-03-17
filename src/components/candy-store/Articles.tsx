@@ -12,6 +12,8 @@ const tagColors: Record<string, string> = {
 
 export default function Articles() {
   const { articles } = useStore();
+  const ordered = [...articles].sort((a, b) => b.id - a.id);
+  const scrollClass = ordered.length > 6 ? 'md:max-h-[720px] md:overflow-y-auto md:pr-2' : '';
 
   return (
     <section id="articles" className="py-16 md:py-20 bg-muted/30">
@@ -25,11 +27,12 @@ export default function Articles() {
           </p>
         </div>
 
-        {articles.length === 0 ? (
+        {ordered.length === 0 ? (
           <p className="text-center text-muted-foreground py-8">Статей пока нет</p>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {articles.map(a => (
+          <div className={scrollClass}>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {ordered.map(a => (
               <Link
                 key={a.id}
                 to={`/articles/${a.slug}`}
@@ -59,7 +62,8 @@ export default function Articles() {
                   </span>
                 </div>
               </Link>
-            ))}
+              ))}
+            </div>
           </div>
         )}
       </div>

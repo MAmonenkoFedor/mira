@@ -16,7 +16,7 @@ export interface Order {
   total: number;
   discount: number;
   promo: string | null;
-  contact: { name: string; phone: string };
+  contact: { name: string; phone: string; email?: string };
   delivery: { address: string; method: string; payment: string };
   date: string;
 }
@@ -159,7 +159,7 @@ export function useCart() {
   const total = productsSubtotal + packagingSubtotal - discount;
   const count = items.reduce((s, i) => s + i.quantity, 0);
 
-  const placeOrder = useCallback((contact: { name: string; phone: string }, delivery: { address: string; method: string; payment: string }) => {
+  const placeOrder = useCallback((contact: { name: string; phone: string; email?: string }, delivery: { address: string; method: string; payment: string }) => {
     const itemsSnapshot: CartItem[] = items.map(i => {
       const pack = i.packagingId ? resolvePackagingById(i.packagingId) : null;
       if (!pack) {

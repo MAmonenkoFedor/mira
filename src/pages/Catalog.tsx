@@ -85,6 +85,14 @@ const Catalog = () => {
     if (c) setActiveCategory(c);
   }, [searchParams]);
 
+  const searchQuery = searchParams.get('search') || '';
+  const badgeQuery = searchParams.get('badge') || undefined;
+  const sortQuery = ((): 'popular' | 'price_asc' | 'price_desc' | undefined => {
+    const s = searchParams.get('sort');
+    if (s === 'popular' || s === 'price_asc' || s === 'price_desc') return s;
+    return undefined;
+  })();
+
   const productCategoryIds = useMemo(() => {
     const set = new Set<string>();
     for (const p of products) {
@@ -283,6 +291,9 @@ const Catalog = () => {
                   categoryFilterMode="hierarchy"
                   onAddToCart={handleAddToCart}
                   productsOverride={products}
+                  initialSearch={searchQuery}
+                  initialBadge={badgeQuery}
+                  initialSort={sortQuery}
                 />
               </div>
             </div>

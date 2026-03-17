@@ -7,7 +7,7 @@ interface CheckoutProps {
   onClose: () => void;
   total: number;
   onPlaceOrder: (
-    contact: { name: string; phone: string },
+    contact: { name: string; phone: string; email?: string },
     delivery: { address: string; method: string; payment: string }
   ) => Order;
 }
@@ -16,6 +16,7 @@ export default function Checkout({ open, onClose, total, onPlaceOrder }: Checkou
   const [step, setStep] = useState(1);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
   const [method, setMethod] = useState('courier');
   const [payment, setPayment] = useState('card');
@@ -45,7 +46,7 @@ export default function Checkout({ open, onClose, total, onPlaceOrder }: Checkou
 
   const handleSubmit = () => {
     if (!validateStep2()) return;
-    const o = onPlaceOrder({ name, phone }, { address, method, payment });
+    const o = onPlaceOrder({ name, phone, email: email.trim() || undefined }, { address, method, payment });
     setOrder(o);
     setStep(3);
   };
@@ -110,6 +111,16 @@ export default function Checkout({ open, onClose, total, onPlaceOrder }: Checkou
                   type="tel"
                 />
                 {errors.phone && <p className="text-destructive text-xs mt-1">Укажите телефон</p>}
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground mb-1 block">Почта</label>
+                <input
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  className="w-full px-4 py-3 rounded-2xl border text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 border-border"
+                  placeholder="email@example.com"
+                  type="email"
+                />
               </div>
               <button
                 onClick={handleNext}
@@ -185,7 +196,7 @@ export default function Checkout({ open, onClose, total, onPlaceOrder }: Checkou
               <p className="text-muted-foreground mb-1">Ваш заказ №{order.id} оформлен</p>
               <p className="text-sm text-muted-foreground mb-6">Мы свяжемся с вами для подтверждения</p>
               <button
-                onClick={() => { onClose(); setStep(1); setOrder(null); setName(''); setPhone(''); setAddress(''); }}
+                onClick={() => { onClose(); setStep(1); setOrder(null); setName(''); setPhone(''); setEmail(''); setAddress(''); }}
                 className="px-8 py-3 rounded-full bg-primary text-primary-foreground font-display font-semibold hover:scale-[1.02] active:scale-[0.98] transition-transform"
               >
                 Продолжить покупки
