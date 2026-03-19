@@ -1,19 +1,33 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Heart, Minus, Plus, Tag } from 'lucide-react';
+import { Heart, Minus, Plus, Tag, Star } from 'lucide-react';
 import Header from '@/components/candy-store/Header';
 import Footer from '@/components/candy-store/Footer';
 import CartDrawer from '@/components/candy-store/CartDrawer';
 import Checkout from '@/components/candy-store/Checkout';
 import { useCart } from '@/components/candy-store/useCart';
 import { useStore } from '@/components/candy-store/useStore';
-import { resolveMediaUrl } from '@/lib/api';
+import { api, resolveMediaUrl } from '@/lib/api';
+import { getCustomerToken } from '@/lib/auth';
 import NotFound from '@/pages/NotFound';
-import { badgeToneClasses, type Product } from '@/components/candy-store/data';
+import { badgeToneClasses, type Product, type Review } from '@/components/candy-store/data';
 import { toast } from 'sonner';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from '@/components/ui/carousel';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+
+function Stars({ count }: { count: number }) {
+  return (
+    <div className="flex gap-0.5">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Star
+          key={i}
+          size={16}
+          className={i < count ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/30'}
+        />
+      ))}
+    </div>
+  );
+}
 
 export default function ProductPage() {
   const NONE_VALUE = '__none__';
@@ -55,6 +69,20 @@ export default function ProductPage() {
   }, [product]);
   const posterUrl = useMemo(() => resolveMediaUrl(product?.image), [product?.image]);
   const favorite = product ? isFavorite(product.id) : false;
+  const activePackaging = useMemo(() => packagingOptions.filter(p => p.active), [packagingOptions]);
+  const resolvedPackagingMode = product?.packagingMode ?? (product?.standardPackagingId ? 'standard' : 'selectable');
+  const getPackagingImage = (p?: { image?: string; images?: string[] }) => resolveMediaUrl(p?.image || p?.images?.[0] || '');
+  const standardPackaging = useMemo(() => {
+    if (resolvedPackagingMode !== 'standard') return null;
+    if (!product?.standardPackagingId) return null;
+    return activePackaging.find(p => p.id === product.standardPackagingId) ?? null;
+  }, [activePackaging, resolvedPackagingMode, product?.standardPackagingId]);
+  const packagingChoices = useMemo(() => {
+    return [
+      { id: NONE_VALUE, name: 'Без упаковки', price: 0, image: '', images: [] as string[] },
+      ...activePackaging,
+    ];
+  }, [activePackaging]);
 
   const related = useMemo(() => {
     if (!product) return [];
@@ -79,11 +107,59 @@ export default function ProductPage() {
   const [qty, setQty] = useState(1);
   const [selectedPackagingId, setSelectedPackagingId] = useState<string>('');
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewSending, setReviewSending] = useState(false);
+  const [reviewForm, setReviewForm] = useState({ name: '', rating: 5, text: '' });
+  const [canReview, setCanReview] = useState(false);
+  const [reviewEligibilityReady, setReviewEligibilityReady] = useState(false);
+
+  useEffect(() => {
+    if (!product?.id) return;
+    const load = async () => {
+      try {
+        setReviewsLoading(true);
+        const list = await api.getProductReviews(product.id);
+        setReviews(Array.isArray(list) ? list as Review[] : []);
+      } catch {
+        setReviews([]);
+      } finally {
+        setReviewsLoading(false);
+      }
+    };
+    load();
+  }, [product?.id]);
+
+  useEffect(() => {
+    if (!product?.id) return;
+    const token = getCustomerToken();
+    if (!token) {
+      setCanReview(false);
+      setReviewEligibilityReady(true);
+      return;
+    }
+    const check = async () => {
+      try {
+        const orders = await api.getCustomerOrders();
+        const list = Array.isArray(orders) ? orders : [];
+        const has = list.some((o: any) => Array.isArray(o.items) && o.items.some((i: any) => Number(i.productId) === product.id));
+        setCanReview(has);
+      } catch {
+        setCanReview(false);
+      } finally {
+        setReviewEligibilityReady(true);
+      }
+    };
+    check();
+  }, [product?.id]);
 
   useEffect(() => {
     setIdx(0);
     setQty(1);
     setSelectedPackagingId('');
+    setReviewForm({ name: '', rating: 5, text: '' });
+    setCanReview(false);
+    setReviewEligibilityReady(false);
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   }, [productId]);
 
@@ -180,16 +256,12 @@ export default function ProductPage() {
   }, [product, slides, category]);
 
   if (!product) return <NotFound />;
-
-  const activePackaging = packagingOptions.filter(p => p.active);
-  const standardPackaging = product.packagingMode === 'standard'
-    ? (activePackaging.find(p => p.id === product.standardPackagingId) ?? null)
-    : null;
-  const selectedPackaging = product.packagingMode === 'selectable'
-    ? (activePackaging.find(p => p.id === selectedPackagingId) ?? null)
-    : null;
-  const packagingPrice = (standardPackaging?.price ?? selectedPackaging?.price ?? 0) * qty;
-  const lineTotal = product.price * qty + packagingPrice;
+  const formatReviewDate = (value?: string) => {
+    if (!value) return '';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -340,31 +412,53 @@ export default function ProductPage() {
               )}
             </div>
 
-            {(product.packagingMode && product.packagingMode !== 'none') && (
+            {(resolvedPackagingMode && resolvedPackagingMode !== 'none') && (
               <div className="mb-6">
                 <div className="text-xs font-medium text-muted-foreground mb-2">Упаковка</div>
-                {product.packagingMode === 'selectable' ? (
-                  <Select
-                    value={selectedPackagingId || NONE_VALUE}
-                    onValueChange={(v) => setSelectedPackagingId(v === NONE_VALUE ? '' : v)}
-                  >
-                    <SelectTrigger className="h-auto w-full px-4 py-3 rounded-2xl bg-card border border-border text-sm focus:ring-2 focus:ring-primary/30">
-                      <SelectValue placeholder="Выберите упаковку" />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-2xl">
-                      <SelectItem value={NONE_VALUE}>Без упаковки</SelectItem>
-                      {activePackaging.map(p => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.name} · {p.price} ₽
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                {resolvedPackagingMode === 'selectable' ? (
+                  <div>
+                    <Carousel opts={{ align: 'start', dragFree: true }} className="w-full">
+                      <CarouselContent className="-ml-3">
+                        {packagingChoices.map(p => {
+                          const imageUrl = getPackagingImage(p);
+                          const active = (selectedPackagingId || NONE_VALUE) === p.id;
+                          return (
+                            <CarouselItem key={p.id} className="pl-3 basis-[90px] sm:basis-[100px]">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedPackagingId(p.id === NONE_VALUE ? '' : p.id)}
+                                className={`w-full rounded-2xl border text-left p-2 transition ${
+                                  active ? 'border-primary/60 bg-primary/10' : 'border-border bg-card hover:bg-muted/40'
+                                }`}
+                              >
+                                <div className="w-full h-14 rounded-xl bg-muted/40 overflow-hidden flex items-center justify-center">
+                                  {imageUrl ? (
+                                    <img src={imageUrl} alt="" className="w-full h-full object-cover" />
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">Без упаковки</span>
+                                  )}
+                                </div>
+                                <div className="mt-1 text-[11px] font-medium line-clamp-2">{p.name}</div>
+                                <div className="text-[11px] text-primary font-semibold">{p.price} ₽</div>
+                              </button>
+                            </CarouselItem>
+                          );
+                        })}
+                      </CarouselContent>
+                      <CarouselPrevious className="hidden sm:flex left-2" />
+                      <CarouselNext className="hidden sm:flex right-2" />
+                    </Carousel>
+                  </div>
                 ) : (
                   <div className="px-4 py-3 rounded-2xl bg-muted text-sm">
                     {standardPackaging ? (
                       <div className="flex items-center justify-between gap-4">
-                        <span className="font-display font-medium">{standardPackaging.name}</span>
+                        <div className="flex items-center gap-3">
+                          {getPackagingImage(standardPackaging) && (
+                            <img src={getPackagingImage(standardPackaging)} alt="" className="w-10 h-10 rounded-xl object-cover" />
+                          )}
+                          <span className="font-display font-medium">{standardPackaging.name}</span>
+                        </div>
                         <span className="font-display font-semibold text-primary">{standardPackaging.price} ₽</span>
                       </div>
                     ) : (
@@ -427,7 +521,8 @@ export default function ProductPage() {
               <div className="flex flex-1 items-center gap-3">
                 <button
                   onClick={() => {
-                    cart.addItem(product, qty, product.packagingMode === 'selectable' ? (selectedPackagingId || null) : undefined);
+                    const packagingArg = resolvedPackagingMode === 'selectable' ? (selectedPackagingId || null) : undefined;
+                    cart.addItem(product, qty, packagingArg);
                     toast.success('Добавлено!', { description: product.name, duration: 2000 });
                     cart.setIsCartOpen(true);
                   }}
@@ -448,6 +543,121 @@ export default function ProductPage() {
           </div>
         </div>
       </main>
+
+      <section className="container pb-12 md:pb-16">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+          <h2 className="font-display text-xl md:text-2xl font-bold">Отзывы о товаре</h2>
+          <span className="text-sm text-muted-foreground">{reviews.length} отзывов</span>
+        </div>
+
+        {reviewsLoading ? (
+          <div className="text-sm text-muted-foreground">Загрузка отзывов...</div>
+        ) : (
+          <div className="grid gap-4">
+            {reviews.map(r => (
+              <div key={r.id} className="bg-card rounded-3xl p-5 shadow-soft border border-border/40 grid gap-3">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="font-display font-semibold text-sm">{r.authorName}</div>
+                    <div className="text-xs text-muted-foreground">{formatReviewDate(r.createdAt) || '—'}</div>
+                  </div>
+                  <Stars count={r.rating} />
+                </div>
+                <div className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">«{r.text}»</div>
+              </div>
+            ))}
+            {reviews.length === 0 && (
+              <div className="text-sm text-muted-foreground">Пока нет отзывов. Будьте первым!</div>
+            )}
+          </div>
+        )}
+
+        <div className="mt-8 bg-card rounded-3xl p-5 border border-border/40 shadow-soft">
+          <div className="font-display font-semibold text-base mb-2">Оставить отзыв</div>
+          {!reviewEligibilityReady && (
+            <div className="text-xs text-muted-foreground mb-4">Проверяем покупку...</div>
+          )}
+          {reviewEligibilityReady && !getCustomerToken() && (
+            <div className="text-xs text-muted-foreground mb-4">
+              Чтобы оставить отзыв, войдите в аккаунт. <Link to="/account" className="text-primary hover:underline">Войти</Link>
+            </div>
+          )}
+          {reviewEligibilityReady && getCustomerToken() && !canReview && (
+            <div className="text-xs text-muted-foreground mb-4">
+              Отзыв могут оставить только покупатели этого товара
+            </div>
+          )}
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!canReview) { toast.error('Отзыв могут оставить только покупатели'); return; }
+              if (!reviewForm.name.trim()) { toast.error('Введите имя'); return; }
+              if (!reviewForm.text.trim()) { toast.error('Введите текст отзыва'); return; }
+              if (!product?.id) return;
+              try {
+                setReviewSending(true);
+                await api.addProductReview(product.id, {
+                  authorName: reviewForm.name.trim(),
+                  rating: Number(reviewForm.rating) || 5,
+                  text: reviewForm.text.trim(),
+                });
+                setReviewForm({ name: '', rating: 5, text: '' });
+                toast.success('Отзыв отправлен на модерацию');
+              } catch {
+                toast.error('Не удалось отправить отзыв');
+              } finally {
+                setReviewSending(false);
+              }
+            }}
+            className="grid gap-3"
+          >
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Имя</label>
+                <input
+                  value={reviewForm.name}
+                  onChange={e => setReviewForm(f => ({ ...f, name: e.target.value }))}
+                  className="admin-input"
+                  disabled={!canReview}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Оценка</label>
+                <select
+                  value={reviewForm.rating}
+                  onChange={e => setReviewForm(f => ({ ...f, rating: Number(e.target.value) }))}
+                  className="admin-input"
+                  disabled={!canReview}
+                >
+                  {[5, 4, 3, 2, 1].map(v => (
+                    <option key={v} value={v}>{v} / 5</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Текст отзыва</label>
+              <textarea
+                value={reviewForm.text}
+                onChange={e => setReviewForm(f => ({ ...f, text: e.target.value }))}
+                rows={4}
+                className="admin-input resize-none"
+                disabled={!canReview}
+              />
+            </div>
+            <div className="text-xs text-muted-foreground">Отзыв будет опубликован после модерации</div>
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={reviewSending || !canReview}
+                className="px-5 py-2.5 rounded-full bg-primary text-primary-foreground font-display font-semibold hover:scale-[1.02] active:scale-[0.98] transition-transform disabled:opacity-60"
+              >
+                Отправить отзыв
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
 
       <Footer />
 

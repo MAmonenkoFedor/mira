@@ -7,15 +7,9 @@ function resolveBase(): string {
     const { hostname, port } = window.location;
     const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
     const isDevPort = ["8080", "8081", "8082", "5173"].includes(port);
+    if (envBase) return envBase;
     if (isLocalHost && isDevPort) return "http://localhost:3001";
     if (!envBase) return "";
-    try {
-      const u = new URL(envBase);
-      const envLocalhost =
-        (u.hostname === "localhost" || u.hostname === "127.0.0.1" || u.hostname === "[::1]") &&
-        ["8080", "8081", "8082", "5173"].includes(u.port);
-      if (envLocalhost) return "http://localhost:3001";
-    } catch {}
   }
   return envBase;
 }

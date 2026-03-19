@@ -72,6 +72,17 @@ export interface PromoBanner {
   active: boolean;
 }
 
+export interface Review {
+  id: number;
+  productId: number;
+  authorName: string;
+  rating: number;
+  text: string;
+  approved: boolean;
+  createdAt?: string;
+  productName?: string;
+}
+
 export interface FooterData {
   brandEmoji: string;
   brandName: string;
@@ -84,6 +95,12 @@ export interface FooterData {
   address: string;
   socialItems: string[];
   copyright: string;
+}
+
+export interface HeroTextData {
+  title: string;
+  accent: string;
+  subtitle: string;
 }
 
 export const footerData: FooterData = {
@@ -103,6 +120,12 @@ export const footerData: FooterData = {
   address: '📍 Москва, ул. Сладкая, 15',
   socialItems: ['📱 Telegram', '📷 Instagram', '💬 VK'],
   copyright: '© 2026 МираВкус. Все права защищены.',
+};
+
+export const heroTextData: HeroTextData = {
+  title: 'Сладкое счастье',
+  accent: 'для детей',
+  subtitle: 'Натуральные конфеты, шоколад и подарочные наборы — с любовью для самых маленьких сладкоежек',
 };
 
 export const categories: Category[] = [

@@ -3,7 +3,7 @@ import { CartItem } from './useCart';
 import { useState } from 'react';
 import { resolveMediaUrl } from '@/lib/api';
 import { useStore } from './useStore';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Carousel, CarouselContent, CarouselItem } from '@/components/ui/carousel';
 
 interface CartDrawerProps {
   open: boolean;
@@ -33,6 +33,8 @@ export default function CartDrawer({
     if (!id) return null;
     return activePackaging.find(p => p.id === id) ?? null;
   };
+  const getPackagingImage = (p?: { image?: string; images?: string[] }) => resolveMediaUrl(p?.image || p?.images?.[0] || '');
+  const packagingChoices = [{ id: NONE_VALUE, name: 'Без упаковки', price: 0, image: '', images: [] as string[] }, ...activePackaging];
 
   const handlePromo = async () => {
     const ok = await onApplyPromo(promoInput.trim());
@@ -65,7 +67,9 @@ export default function CartDrawer({
               <p className="text-muted-foreground font-display">Корзина пуста</p>
             </div>
           ) : (
-            items.map(item => (
+            items.map(item => {
+              const resolvedPackagingMode = item.product.packagingMode ?? (item.product.standardPackagingId ? 'standard' : 'selectable');
+              return (
               <div key={item.product.id} className="flex gap-3 p-3 rounded-2xl bg-muted/50">
                 <img
                   src={resolveMediaUrl(item.product.images?.[0] || item.product.image)}
@@ -75,31 +79,50 @@ export default function CartDrawer({
                 <div className="flex-1 min-w-0">
                   <h4 className="font-display font-medium text-sm truncate">{item.product.name}</h4>
                   <p className="font-display font-bold text-primary text-sm mt-0.5">{item.product.price} ₽</p>
-                  {(item.product.packagingMode && item.product.packagingMode !== 'none') && (
+                  {(resolvedPackagingMode && resolvedPackagingMode !== 'none') && (
                     <div className="mt-1.5">
-                      {item.product.packagingMode === 'selectable' ? (
-                        <Select
-                          value={item.packagingId ?? NONE_VALUE}
-                          onValueChange={(v) => onUpdatePackaging(item.product.id, v === NONE_VALUE ? null : v)}
-                        >
-                          <SelectTrigger className="h-auto w-full px-3 py-2 rounded-2xl bg-card border border-border text-xs focus:ring-2 focus:ring-primary/30">
-                            <SelectValue placeholder="Упаковка" />
-                          </SelectTrigger>
-                          <SelectContent className="rounded-2xl">
-                            <SelectItem value={NONE_VALUE}>Без упаковки</SelectItem>
-                            {activePackaging.map(p => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.name} · {p.price} ₽
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                      {resolvedPackagingMode === 'selectable' ? (
+                        <Carousel opts={{ align: 'start', dragFree: true }} className="w-full">
+                          <CarouselContent className="-ml-2">
+                            {packagingChoices.map(p => {
+                              const imageUrl = getPackagingImage(p);
+                              const active = (item.packagingId ?? NONE_VALUE) === p.id;
+                              return (
+                                <CarouselItem key={p.id} className="pl-2 basis-[70px]">
+                                  <button
+                                    type="button"
+                                    onClick={() => onUpdatePackaging(item.product.id, p.id === NONE_VALUE ? null : p.id)}
+                                    className={`w-full rounded-2xl border text-left p-2 transition ${
+                                      active ? 'border-primary/60 bg-primary/10' : 'border-border bg-card hover:bg-muted/40'
+                                    }`}
+                                  >
+                                    <div className="w-full h-8 rounded-xl bg-muted/40 overflow-hidden flex items-center justify-center">
+                                      {imageUrl ? (
+                                        <img src={imageUrl} alt="" className="w-full h-full object-cover" />
+                                      ) : (
+                                        <span className="text-[9px] text-muted-foreground">Без упаковки</span>
+                                      )}
+                                    </div>
+                                    <div className="mt-1 text-[9px] font-medium line-clamp-2">{p.name}</div>
+                                    <div className="text-[9px] text-primary font-semibold">{p.price} ₽</div>
+                                  </button>
+                                </CarouselItem>
+                              );
+                            })}
+                          </CarouselContent>
+                        </Carousel>
                       ) : (
-                        <div className="text-xs text-muted-foreground">
+                        <div className="text-xs text-muted-foreground flex items-center gap-2">
                           {(() => {
                             const p = getPackaging(item.packagingId ?? item.product.standardPackagingId ?? null);
-                            if (!p) return <>Упаковка: стандартная</>;
-                            return <>Упаковка: {p.name}{p.price ? ` · ${p.price} ₽` : ''}</>;
+                            if (!p) return <span>Упаковка: стандартная</span>;
+                            const imageUrl = getPackagingImage(p);
+                            return (
+                              <>
+                                {imageUrl && <img src={imageUrl} alt="" className="w-7 h-7 rounded-lg object-cover" />}
+                                <span>Упаковка: {p.name}{p.price ? ` · ${p.price} ₽` : ''}</span>
+                              </>
+                            );
                           })()}
                         </div>
                       )}
@@ -128,7 +151,8 @@ export default function CartDrawer({
                   </div>
                 </div>
               </div>
-            ))
+            );
+            })
           )}
         </div>
 

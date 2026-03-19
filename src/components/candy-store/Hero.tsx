@@ -4,7 +4,7 @@ import { resolveMediaUrl } from '@/lib/api';
 import { Link } from 'react-router-dom';
 
 export default function Hero() {
-  const { heroImages } = useStore();
+  const { heroImages, heroText } = useStore();
   const slides = useMemo(
     () => (heroImages || []).filter(i => i.active).sort((a, b) => a.position - b.position),
     [heroImages]
@@ -39,11 +39,11 @@ export default function Hero() {
       <div className="container relative z-10 flex flex-col lg:flex-row items-center gap-8 lg:gap-12 py-20">
         <div className="flex-1 text-center lg:text-left max-w-xl">
           <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight mb-4">
-            Сладкое счастье{' '}
-            <span className="text-primary">для детей</span>
+            {heroText.title}{' '}
+            <span className="text-primary">{heroText.accent}</span>
           </h1>
           <p className="text-lg md:text-xl text-muted-foreground mb-8 leading-relaxed">
-            Натуральные конфеты, шоколад и подарочные наборы — с любовью для самых маленьких сладкоежек
+            {heroText.subtitle}
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
             <Link

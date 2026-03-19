@@ -40,6 +40,17 @@ export async function migrate(pool: Pool) {
       images text[]
     );
   `);
+  await pool.query(`
+    create table if not exists reviews(
+      id serial primary key,
+      product_id integer references products(id) on delete cascade,
+      author_name text not null,
+      rating integer not null check (rating >= 1 and rating <= 5),
+      text text not null,
+      approved boolean not null default false,
+      created_at timestamptz not null default now()
+    );
+  `);
   await pool.query(`alter table products add column if not exists active boolean not null default true`);
   await pool.query(`alter table products add column if not exists images text[]`);
   await pool.query(`alter table products add column if not exists video_url text`);
@@ -157,6 +168,12 @@ export async function migrate(pool: Pool) {
       data jsonb not null
     );
   `);
+  await pool.query(`
+    create table if not exists hero_text_settings(
+      id integer primary key default 1,
+      data jsonb not null
+    );
+  `);
 
   await pool.query(`alter table products add column if not exists packaging_mode text`);
   await pool.query(`alter table products add column if not exists standard_packaging_id text references packaging_options(id)`);
@@ -193,4 +210,5 @@ export async function migrate(pool: Pool) {
   await pool.query(`select setval(pg_get_serial_sequence('admins','id'), (select coalesce(max(id),1) from admins), (select count(*)>0 from admins))`);
   await pool.query(`select setval(pg_get_serial_sequence('promocodes','id'), (select coalesce(max(id),1) from promocodes), (select count(*)>0 from promocodes))`);
   await pool.query(`select setval(pg_get_serial_sequence('hero_images','id'), (select coalesce(max(id),1) from hero_images), (select count(*)>0 from hero_images))`);
+  await pool.query(`select setval(pg_get_serial_sequence('reviews','id'), (select coalesce(max(id),1) from reviews), (select count(*)>0 from reviews))`);
 }

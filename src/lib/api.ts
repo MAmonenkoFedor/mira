@@ -6,17 +6,10 @@ function resolveBase(): string {
     const { hostname, port } = window.location;
     const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
     const isDevPort = ["8080", "8081", "8082", "5173"].includes(port);
+    if (envBase) return envBase;
     // В дев-окружении ходим напрямую на бекенд (3001), чтобы обойти сбои прокси
     if (isLocalHost && isDevPort) return "http://localhost:3001";
-    if (!envBase) {
-      return "";
-    }
-    try {
-      const u = new URL(envBase);
-      const envLocalhost = (u.hostname === "localhost" || u.hostname === "127.0.0.1" || u.hostname === "[::1]") &&
-        ["8080", "8081", "8082", "5173"].includes(u.port);
-      if (envLocalhost) return "http://localhost:3001";
-    } catch {}
+    if (!envBase) return "";
   }
   return envBase;
 }
@@ -80,6 +73,12 @@ export const api = {
   async uploadHeroImage(dataUrl: string) {
     return j(fetch(`${base}/api/hero-images/upload`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) })));
   },
+  async getHeroText() {
+    return j(fetch(`${base}/api/hero-text`));
+  },
+  async updateHeroText(p: any) {
+    return j(fetch(`${base}/api/hero-text`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+  },
   async getPromoBanners() {
     return j(fetch(`${base}/api/promo-banners`));
   },
@@ -140,6 +139,12 @@ export const api = {
   async deleteProduct(id: number) {
     return j(fetch(`${base}/api/products/${id}`, withAuth({ method: "DELETE" })));
   },
+  async getProductReviews(productId: number) {
+    return j(fetch(`${base}/api/products/${productId}/reviews`));
+  },
+  async addProductReview(productId: number, data: any) {
+    return j(fetch(`${base}/api/products/${productId}/reviews`, withCustomerAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) })));
+  },
   async getCategories() {
     return j(fetch(`${base}/api/categories`));
   },
@@ -187,5 +192,17 @@ export const api = {
   },
   async resetPassword(email: string, token: string, password: string) {
     return j(fetch(`${base}/api/auth/reset-password`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, token, password }) }));
+  },
+  async getReviews() {
+    return j(fetch(`${base}/api/reviews`, withAuth()));
+  },
+  async addReview(data: any) {
+    return j(fetch(`${base}/api/reviews`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) })));
+  },
+  async updateReview(id: number, data: any) {
+    return j(fetch(`${base}/api/reviews/${id}`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) })));
+  },
+  async deleteReview(id: number) {
+    return j(fetch(`${base}/api/reviews/${id}`, withAuth({ method: "DELETE" })));
   },
 };

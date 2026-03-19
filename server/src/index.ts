@@ -186,6 +186,11 @@ const FooterSchema = z.object({
   socialItems: z.array(z.string().min(1)),
   copyright: z.string().min(1),
 });
+const HeroTextSchema = z.object({
+  title: z.string().min(1),
+  accent: z.string().min(1),
+  subtitle: z.string().min(1),
+});
 const defaultFooter = {
   brandEmoji: "🍬",
   brandName: "МираВкус",
@@ -203,6 +208,11 @@ const defaultFooter = {
   address: "📍 Москва, ул. Сладкая, 15",
   socialItems: ["📱 Telegram", "📷 Instagram", "💬 VK"],
   copyright: "© 2026 МираВкус. Все права защищены.",
+};
+const defaultHeroText = {
+  title: "Сладкое счастье",
+  accent: "для детей",
+  subtitle: "Натуральные конфеты, шоколад и подарочные наборы — с любовью для самых маленьких сладкоежек",
 };
 
 app.post("/api/auth/login", rateLimitMiddleware(10, 15 * 60 * 1000), async (req, res) => {
@@ -484,7 +494,7 @@ app.put("/api/products/:id", requireAuth(async (req, res) => {
     if (!nextStandardPackagingId) nextPackagingMode = null;
   }
   await pool.query(
-    "update products set name=coalesce($2,name), price=coalesce($3,price), old_price=$4, category=coalesce($5,category), categories=case when $26 then $27 when $5 is not null then array[$5] else categories end, badge=$6, description=coalesce($7,description), sku=coalesce($8,sku), composition_short=coalesce($9,composition_short), shelf_life=coalesce($10,shelf_life), country=coalesce($11,country), composition_set=coalesce($12,composition_set), storage_temperature=coalesce($13,storage_temperature), product_features=coalesce($14,product_features), set_weight=coalesce($15,set_weight), package_dimensions=coalesce($16,package_dimensions), description_long=coalesce($17,description_long), image=coalesce($18,image), images=$19, video_url=coalesce($28,video_url), popularity=coalesce($20,popularity), active=coalesce($21,active), packaging_mode=case when $22 then $23 when $24 and $25 is null and packaging_mode='standard' then null else packaging_mode end, standard_packaging_id=case when $24 then $25 else standard_packaging_id end where id=$1",
+    "update products set name=coalesce($2,name), price=coalesce($3,price), old_price=$4, category=coalesce($5,category), categories=case when $26 then $27::text[] when $5 is not null then array[$5] else categories end, badge=$6, description=coalesce($7,description), sku=coalesce($8,sku), composition_short=coalesce($9,composition_short), shelf_life=coalesce($10,shelf_life), country=coalesce($11,country), composition_set=coalesce($12,composition_set), storage_temperature=coalesce($13,storage_temperature), product_features=coalesce($14,product_features), set_weight=coalesce($15,set_weight), package_dimensions=coalesce($16,package_dimensions), description_long=coalesce($17,description_long), image=coalesce($18,image), images=$19, video_url=coalesce($28,video_url), popularity=coalesce($20,popularity), active=coalesce($21,active), packaging_mode=case when $22 then $23 when $24 and $25::text is null and packaging_mode='standard' then null else packaging_mode end, standard_packaging_id=case when $24 then $25::text else standard_packaging_id end where id=$1",
     [
       id,
       p.name ?? null,
@@ -521,6 +531,123 @@ app.put("/api/products/:id", requireAuth(async (req, res) => {
 
 app.delete("/api/products/:id", requireAuth(async (req, res) => {
   await pool.query("delete from products where id=$1", [Number(req.params.id)]);
+  res.json({ ok: true });
+}));
+
+const ReviewCreateSchema = z.object({
+  authorName: z.string().min(1),
+  rating: z.number().int().min(1).max(5),
+  text: z.string().min(1),
+});
+const ReviewAdminSchema = z.object({
+  productId: z.number().int(),
+  authorName: z.string().min(1),
+  rating: z.number().int().min(1).max(5),
+  text: z.string().min(1),
+  approved: z.boolean().optional(),
+  createdAt: z.string().optional(),
+});
+const ReviewUpdateSchema = z.object({
+  productId: z.number().int().optional(),
+  authorName: z.string().min(1).optional(),
+  rating: z.number().int().min(1).max(5).optional(),
+  text: z.string().min(1).optional(),
+  approved: z.boolean().optional(),
+  createdAt: z.string().optional(),
+});
+const toDate = (value?: string) => {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+};
+
+app.get("/api/products/:id/reviews", async (req, res) => {
+  const productId = Number(req.params.id);
+  if (!Number.isFinite(productId)) return res.json([]);
+  const { rows } = await pool.query(
+    "select id,product_id,author_name,rating,text,created_at from reviews where product_id=$1 and approved=true order by created_at desc, id desc",
+    [productId]
+  );
+  res.json(rows.map((r: any) => ({
+    id: r.id,
+    productId: r.product_id,
+    authorName: r.author_name,
+    rating: r.rating,
+    text: r.text,
+    createdAt: r.created_at,
+    approved: true,
+  })));
+});
+
+app.post("/api/products/:id/reviews", requireCustomerAuth(async (req, res) => {
+  const productId = Number(req.params.id);
+  if (!Number.isFinite(productId)) return res.status(400).json({ error: "bad_product" });
+  const hdr = req.headers.authorization!;
+  const token = hdr.slice(7);
+  const payload = await verifyToken(token);
+  const phone = payload.phone ? String(payload.phone) : null;
+  const email = payload.email ? String(payload.email) : null;
+  if (!phone && !email) return res.status(403).json({ error: "not_purchased" });
+  const { rows: hasPurchase } = await pool.query(
+    `select 1
+     from orders o
+     join order_items oi on oi.order_id = o.id
+     where oi.product_id=$1
+       and (( $2::text is not null and o.contact_phone=$2) or ($3::text is not null and o.contact_email=$3))
+     limit 1`,
+    [productId, phone, email]
+  );
+  if (!hasPurchase[0]) return res.status(403).json({ error: "not_purchased" });
+  const data = ReviewCreateSchema.parse(req.body);
+  await pool.query(
+    "insert into reviews(product_id,author_name,rating,text,approved) values($1,$2,$3,$4,false)",
+    [productId, data.authorName, data.rating, data.text]
+  );
+  res.status(201).json({ ok: true });
+}));
+
+app.get("/api/reviews", requireAuth(async (_req, res) => {
+  const { rows } = await pool.query(
+    "select r.id,r.product_id,p.name as product_name,r.author_name,r.rating,r.text,r.approved,r.created_at from reviews r left join products p on p.id=r.product_id order by r.created_at desc, r.id desc"
+  );
+  res.json(rows.map((r: any) => ({
+    id: r.id,
+    productId: r.product_id,
+    productName: r.product_name ?? undefined,
+    authorName: r.author_name,
+    rating: r.rating,
+    text: r.text,
+    approved: r.approved,
+    createdAt: r.created_at,
+  })));
+}));
+
+app.post("/api/reviews", requireAuth(async (req, res) => {
+  const data = ReviewAdminSchema.parse(req.body);
+  const createdAt = toDate(data.createdAt);
+  const approved = data.approved ?? true;
+  const { rows } = await pool.query(
+    "insert into reviews(product_id,author_name,rating,text,approved,created_at) values($1,$2,$3,$4,$5,coalesce($6,now())) returning id",
+    [data.productId, data.authorName, data.rating, data.text, approved, createdAt]
+  );
+  res.status(201).json({ id: rows[0].id });
+}));
+
+app.put("/api/reviews/:id", requireAuth(async (req, res) => {
+  const id = Number(req.params.id);
+  const data = ReviewUpdateSchema.parse(req.body);
+  const hasCreatedAt = Object.prototype.hasOwnProperty.call(data, "createdAt");
+  const createdAt = hasCreatedAt ? toDate(data.createdAt) : null;
+  await pool.query(
+    "update reviews set product_id=coalesce($2,product_id), author_name=coalesce($3,author_name), rating=coalesce($4,rating), text=coalesce($5,text), approved=coalesce($6,approved), created_at=case when $7 then $8 else created_at end where id=$1",
+    [id, data.productId ?? null, data.authorName ?? null, data.rating ?? null, data.text ?? null, data.approved ?? null, hasCreatedAt, createdAt]
+  );
+  res.json({ ok: true });
+}));
+
+app.delete("/api/reviews/:id", requireAuth(async (req, res) => {
+  await pool.query("delete from reviews where id=$1", [Number(req.params.id)]);
   res.json({ ok: true });
 }));
 
@@ -769,6 +896,22 @@ app.put("/api/promo-banners/:id", requireAuth(async (req, res) => {
 
 app.delete("/api/promo-banners/:id", requireAuth(async (req, res) => {
   await pool.query("delete from promo_banners where id=$1", [Number(req.params.id)]);
+  res.json({ ok: true });
+}));
+
+app.get("/api/hero-text", async (_req, res) => {
+  const { rows } = await pool.query("select data from hero_text_settings where id=1");
+  if (!rows[0]) return res.json(defaultHeroText);
+  const data = rows[0].data || defaultHeroText;
+  res.json(data);
+});
+
+app.put("/api/hero-text", requireAuth(async (req, res) => {
+  const data = HeroTextSchema.parse(req.body);
+  await pool.query(
+    "insert into hero_text_settings(id,data) values(1,$1) on conflict (id) do update set data=excluded.data",
+    [data]
+  );
   res.json({ ok: true });
 }));
 

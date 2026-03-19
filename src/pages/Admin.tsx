@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, Package, FileText, Tag, Gift, Upload, X, Percent, Image as ImageIcon, ArrowUp, ArrowDown, BadgeCheck, ClipboardList } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, Package, FileText, Tag, Gift, Upload, X, Percent, Image as ImageIcon, ArrowUp, ArrowDown, BadgeCheck, ClipboardList, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { useStore, type Article, type Order } from '@/components/candy-store/useStore';
 import { api, resolveMediaUrl } from '@/lib/api';
 import { badgeToneSoftClasses, badgeToneClasses } from '@/components/candy-store/data';
-import type { Product, Category, Promo, PromoScope, Badge, BadgeTone, PackagingOption } from '@/components/candy-store/data';
+import type { Product, Category, Promo, PromoScope, Badge, BadgeTone, PackagingOption, Review } from '@/components/candy-store/data';
 
-type Tab = 'products' | 'categories' | 'packaging' | 'articles' | 'promos' | 'actions' | 'import' | 'hero' | 'badges' | 'orders' | 'footer';
+type Tab = 'products' | 'categories' | 'packaging' | 'articles' | 'promos' | 'actions' | 'import' | 'hero' | 'badges' | 'orders' | 'footer' | 'reviews';
 
 const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader();
@@ -178,6 +178,7 @@ export default function Admin() {
     { key: 'packaging', icon: Gift, label: 'Упаковка', count: store.packagingOptions.length },
     { key: 'badges', icon: BadgeCheck, label: 'Бейджи', count: store.badges.length },
     { key: 'articles', icon: FileText, label: 'Статьи', count: store.articles.length },
+    { key: 'reviews', icon: Star, label: 'Отзывы', count: 0 },
     { key: 'orders', icon: ClipboardList, label: 'Заказы', count: store.orders?.length || 0 },
     { key: 'promos', icon: Percent, label: 'Промокоды', count: store.promos?.length || 0 },
     { key: 'actions', icon: ImageIcon, label: 'Акции', count: store.promoBanners?.length || 0 },
@@ -299,6 +300,7 @@ export default function Admin() {
               {tab === 'packaging' && <PackagingTab store={store} />}
               {tab === 'badges' && <BadgesTab store={store} />}
               {tab === 'articles' && <ArticlesTab store={store} />}
+              {tab === 'reviews' && <ReviewsTab store={store} />}
               {tab === 'orders' && <OrdersTab store={store} />}
               {tab === 'promos' && <PromosTab store={store} />}
               {tab === 'actions' && <PromoBannersTab store={store} />}
@@ -540,6 +542,18 @@ function HeroTab({ store }: { store: ReturnType<typeof useStore> }) {
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState('');
+  const [textForm, setTextForm] = useState(() => ({
+    title: store.heroText.title,
+    accent: store.heroText.accent,
+    subtitle: store.heroText.subtitle,
+  }));
+  useEffect(() => {
+    setTextForm({
+      title: store.heroText.title,
+      accent: store.heroText.accent,
+      subtitle: store.heroText.subtitle,
+    });
+  }, [store.heroText]);
   const add = async () => {
     if (busy) return;
     let finalUrl = val.trim();
@@ -578,6 +592,63 @@ function HeroTab({ store }: { store: ReturnType<typeof useStore> }) {
   const imgs = [...store.heroImages].sort((a,b)=> a.position - b.position);
   return (
     <div className="grid gap-4">
+      <form onSubmit={async (e) => {
+        e.preventDefault();
+        const title = textForm.title.trim();
+        const accent = textForm.accent.trim();
+        const subtitle = textForm.subtitle.trim();
+        if (!title) { toast.error('Введите заголовок'); return; }
+        if (!accent) { toast.error('Введите акцент'); return; }
+        if (!subtitle) { toast.error('Введите подзаголовок'); return; }
+        try {
+          await store.updateHeroText({ title, accent, subtitle });
+          toast.success('Текст хиро обновлён');
+        } catch (err) {
+          const code = err instanceof Error ? err.message : '';
+          if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+          else toast.error('Не удалось обновить текст');
+        }
+      }} className="bg-card rounded-2xl p-5 border border-border/40 shadow-sm grid gap-4">
+        <div className="font-display font-semibold">Текст хиро-блока</div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Заголовок</label>
+            <input
+              value={textForm.title}
+              onChange={e => setTextForm(v => ({ ...v, title: e.target.value }))}
+              maxLength={80}
+              className="admin-input"
+              placeholder="Сладкое счастье"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Акцент</label>
+            <input
+              value={textForm.accent}
+              onChange={e => setTextForm(v => ({ ...v, accent: e.target.value }))}
+              maxLength={80}
+              className="admin-input"
+              placeholder="для детей"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Подзаголовок</label>
+          <textarea
+            value={textForm.subtitle}
+            onChange={e => setTextForm(v => ({ ...v, subtitle: e.target.value }))}
+            maxLength={220}
+            rows={3}
+            className="admin-input resize-none"
+            placeholder="Натуральные конфеты, шоколад и подарочные наборы..."
+          />
+        </div>
+        <div className="flex justify-end">
+          <button type="submit" className="px-4 py-2 rounded-xl text-sm bg-primary text-primary-foreground font-medium hover:scale-[1.02] active:scale-95 transition-transform">
+            Сохранить
+          </button>
+        </div>
+      </form>
       <div className="bg-card rounded-2xl p-5 border border-border/40 shadow-sm">
         <div className="font-display font-semibold mb-3">Добавить изображение</div>
         <div className="grid gap-3 sm:grid-cols-[1fr_auto] items-start">
@@ -1423,63 +1494,22 @@ function PackagingForm({ option, onSave, onCancel }: {
   onSave: (data: Partial<PackagingOption> & { id?: string }) => void;
   onCancel: () => void;
 }) {
-  const galleryInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
     id: option?.id || '',
     name: option?.name || '',
     price: option?.price || 0,
     active: option?.active ?? true,
     image: option?.image || '',
-    images: option?.images || [],
   });
   const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }));
-  const setImages = (next: string[]) => setForm(f => ({ ...f, images: next }));
   const isNew = !option;
-  const maxImages = 7;
-
-  const addImages = async (files: FileList | null) => {
-    if (!files || !files.length) return;
-    if (form.images.length >= maxImages) { toast.error('Макс. 7 фото'); return; }
-    const list = Array.from(files);
-    const next: string[] = [];
-    for (const file of list) {
-      if (!file.type.startsWith('image/')) { toast.error('Только изображения'); continue; }
-      if (file.size > 5 * 1024 * 1024) { toast.error('Макс. размер 5 МБ'); continue; }
-      try {
-        const dataUrl = await readFileAsDataUrl(file);
-        next.push(dataUrl);
-      } catch {
-        toast.error('Не удалось обработать изображение');
-      }
-    }
-    if (!next.length) return;
-    const space = maxImages - form.images.length;
-    const slice = next.slice(0, space);
-    if (slice.length < next.length) toast.error('Макс. 7 фото');
-    setImages([...form.images, ...slice]);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) { toast.error('Введите название'); return; }
     if (isNew && !form.id.trim()) { toast.error('Введите ID'); return; }
     if (form.price < 0) { toast.error('Цена не может быть отрицательной'); return; }
-    if (form.images.length > maxImages) { toast.error('Макс. 7 фото'); return; }
     let cover = form.image.trim();
-    let images: string[] = [];
-    try {
-      for (const u of form.images) {
-        if (u.startsWith('data:image/')) {
-          const webpUrl = await toWebpDataUrl(u);
-          const res = await api.uploadProductImage(webpUrl) as { url: string };
-          images.push(res.url);
-        } else {
-          images.push(u);
-        }
-      }
-    } catch {
-      images = form.images;
-    }
     if (cover.startsWith('data:image/')) {
       try {
         const webpUrl = await toWebpDataUrl(cover);
@@ -1490,14 +1520,13 @@ function PackagingForm({ option, onSave, onCancel }: {
         return;
       }
     }
-    const fallbackCover = cover || images[0] || '';
     onSave({
       ...(isNew ? { id: form.id.trim().toLowerCase().replace(/\s+/g, '_') } : {}),
       name: form.name.trim(),
       price: Math.round(Number(form.price) || 0),
       active: Boolean(form.active),
-      image: fallbackCover || undefined,
-      images: images.length ? images : undefined,
+      image: cover || undefined,
+      images: [],
     });
   };
 
@@ -1515,38 +1544,6 @@ function PackagingForm({ option, onSave, onCancel }: {
       </div>
       <div className="sm:col-span-2">
         <ImageUpload value={form.image} onChange={v => set('image', v)} />
-      </div>
-      <div className="sm:col-span-2">
-        <label className="text-xs font-medium text-muted-foreground mb-1 block">Галерея (до 7 фото)</label>
-        <div className="grid gap-2">
-          <div className="flex flex-wrap gap-2">
-            {form.images.map((u, i) => (
-              <div key={i} className="relative">
-                <img src={resolveMediaUrl(u)} alt="" className="w-20 h-20 object-cover rounded-xl border" />
-                <button type="button" onClick={() => setImages(form.images.filter((_, idx) => idx !== i))}
-                  className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center">
-                  <X size={12} />
-                </button>
-              </div>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={() => galleryInputRef.current?.click()}
-              className="px-3 py-2 rounded-xl border border-border text-xs text-muted-foreground hover:bg-muted transition-colors flex items-center gap-2">
-              <Upload size={14} />
-              Добавить фото
-            </button>
-            <span className="text-[11px] text-muted-foreground">Добавлено: {form.images.length}/{maxImages}</span>
-            <input
-              ref={galleryInputRef}
-              type="file"
-              multiple
-              accept="image/*"
-              className="hidden"
-              onChange={e => { addImages(e.target.files); e.currentTarget.value = ''; }}
-            />
-          </div>
-        </div>
       </div>
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Цена ₽</label>
@@ -1574,6 +1571,7 @@ function PackagingForm({ option, onSave, onCancel }: {
 function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
   const [editing, setEditing] = useState<Category | null>(null);
   const [creating, setCreating] = useState(false);
+  const [reorderBusy, setReorderBusy] = useState(false);
 
   const colorOptions = [
     { value: 'candy-pink', label: '🩷 Розовый' },
@@ -1582,6 +1580,18 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
     { value: 'candy-blue', label: '💙 Голубой' },
     { value: 'candy-banana', label: '💛 Банановый' },
   ];
+  const homeOrderList = useMemo(() => {
+    const list = store.categories.filter(c => c.showOnHome);
+    return list
+      .map((c, index) => ({ c, index }))
+      .sort((a, b) => {
+        const ao = typeof a.c.homeOrder === 'number' ? a.c.homeOrder : Number.POSITIVE_INFINITY;
+        const bo = typeof b.c.homeOrder === 'number' ? b.c.homeOrder : Number.POSITIVE_INFINITY;
+        if (ao !== bo) return ao - bo;
+        return a.c.name.localeCompare(b.c.name, 'ru') || a.index - b.index;
+      })
+      .map(x => x.c);
+  }, [store.categories]);
 
   return (
     <div>
@@ -1609,6 +1619,69 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
           onCancel={() => { setEditing(null); setCreating(false); }}
         />
       )}
+
+      <div className="bg-card rounded-2xl p-4 border border-border/40 shadow-sm mb-4">
+        <div className="font-display font-semibold mb-3">Порядок на главной</div>
+        <div className="grid gap-2">
+          {homeOrderList.map((c, i) => (
+            <div key={c.id} className="flex items-center gap-3 rounded-xl border border-border/40 bg-muted/20 px-3 py-2">
+              <span className="text-xs text-muted-foreground w-5 text-center">{i + 1}</span>
+              <span className="text-lg">{c.emoji}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate">{c.name}</div>
+                <div className="text-[11px] text-muted-foreground truncate">{c.id}</div>
+              </div>
+              <div className="flex gap-1.5">
+                <button
+                  onClick={async () => {
+                    if (reorderBusy || i === 0) return;
+                    try {
+                      setReorderBusy(true);
+                      const next = [...homeOrderList];
+                      [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                      await Promise.all(next.map((item, idx) => store.updateCategory(item.id, { homeOrder: idx + 1 })));
+                    } catch (err) {
+                      const code = err instanceof Error ? err.message : '';
+                      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                      else toast.error('Не удалось обновить порядок');
+                    } finally {
+                      setReorderBusy(false);
+                    }
+                  }}
+                  disabled={reorderBusy || i === 0}
+                  className="p-2 rounded-xl hover:bg-muted text-muted-foreground disabled:opacity-40"
+                >
+                  <ArrowUp size={15} />
+                </button>
+                <button
+                  onClick={async () => {
+                    if (reorderBusy || i === homeOrderList.length - 1) return;
+                    try {
+                      setReorderBusy(true);
+                      const next = [...homeOrderList];
+                      [next[i + 1], next[i]] = [next[i], next[i + 1]];
+                      await Promise.all(next.map((item, idx) => store.updateCategory(item.id, { homeOrder: idx + 1 })));
+                    } catch (err) {
+                      const code = err instanceof Error ? err.message : '';
+                      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                      else toast.error('Не удалось обновить порядок');
+                    } finally {
+                      setReorderBusy(false);
+                    }
+                  }}
+                  disabled={reorderBusy || i === homeOrderList.length - 1}
+                  className="p-2 rounded-xl hover:bg-muted text-muted-foreground disabled:opacity-40"
+                >
+                  <ArrowDown size={15} />
+                </button>
+              </div>
+            </div>
+          ))}
+          {homeOrderList.length === 0 && (
+            <div className="text-sm text-muted-foreground">Нет категорий, показываемых на главной</div>
+          )}
+        </div>
+      </div>
 
       <div className="grid gap-3">
         {store.categories.map(c => (
@@ -1792,6 +1865,244 @@ function CategoryForm({ category, categories, colorOptions, onSave, onCancel }: 
         </button>
       </div>
     </form>
+  );
+}
+
+function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [filter, setFilter] = useState<'pending' | 'approved' | 'all'>('pending');
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const productsSorted = useMemo(() => {
+    return [...store.products].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  }, [store.products]);
+  const productMap = useMemo(() => {
+    return new Map(productsSorted.map(p => [p.id, p.name]));
+  }, [productsSorted]);
+  const [form, setForm] = useState({
+    productId: productsSorted[0]?.id ?? 0,
+    authorName: '',
+    rating: 5,
+    text: '',
+    approved: true,
+    createdAt: '',
+  });
+  const setFormField = (k: keyof typeof form, v: any) => setForm(f => ({ ...f, [k]: v }));
+
+  useEffect(() => {
+    if (!form.productId && productsSorted.length) {
+      setForm(f => ({ ...f, productId: productsSorted[0].id }));
+    }
+  }, [productsSorted, form.productId]);
+
+  const loadReviews = async () => {
+    try {
+      setLoading(true);
+      const list = await api.getReviews();
+      setReviews(Array.isArray(list) ? list as Review[] : []);
+    } catch {
+      toast.error('Не удалось загрузить отзывы');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadReviews();
+  }, []);
+
+  const formatDate = (value?: string) => {
+    if (!value) return '';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+  };
+
+  const filtered = useMemo(() => {
+    if (filter === 'all') return reviews;
+    if (filter === 'approved') return reviews.filter(r => r.approved);
+    return reviews.filter(r => !r.approved);
+  }, [filter, reviews]);
+
+  return (
+    <div>
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!form.productId) { toast.error('Выберите товар'); return; }
+          if (!form.authorName.trim()) { toast.error('Введите имя'); return; }
+          if (!form.text.trim()) { toast.error('Введите текст'); return; }
+          try {
+            await api.addReview({
+              productId: form.productId,
+              authorName: form.authorName.trim(),
+              rating: Number(form.rating) || 5,
+              text: form.text.trim(),
+              approved: Boolean(form.approved),
+              ...(form.createdAt ? { createdAt: form.createdAt } : {}),
+            });
+            toast.success('Отзыв добавлен');
+            setForm(f => ({ ...f, authorName: '', rating: 5, text: '', approved: true, createdAt: '' }));
+            loadReviews();
+          } catch (err) {
+            const code = err instanceof Error ? err.message : '';
+            if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+            else toast.error('Не удалось добавить отзыв');
+          }
+        }}
+        className="bg-card rounded-2xl p-5 border border-border/40 shadow-sm mb-6 grid gap-4 sm:grid-cols-2"
+      >
+        <div className="sm:col-span-2">
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Товар</label>
+          <select
+            value={form.productId || ''}
+            onChange={e => setFormField('productId', Number(e.target.value))}
+            className="admin-input"
+          >
+            <option value="" disabled>Выберите товар</option>
+            {productsSorted.map(p => (
+              <option key={p.id} value={p.id}>{p.name} · #{p.id}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Имя</label>
+          <input
+            value={form.authorName}
+            onChange={e => setFormField('authorName', e.target.value)}
+            className="admin-input"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Оценка</label>
+          <select value={form.rating} onChange={e => setFormField('rating', Number(e.target.value))} className="admin-input">
+            {[5, 4, 3, 2, 1].map(v => (
+              <option key={v} value={v}>{v} / 5</option>
+            ))}
+          </select>
+        </div>
+        <div className="sm:col-span-2">
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Текст отзыва</label>
+          <textarea
+            value={form.text}
+            onChange={e => setFormField('text', e.target.value)}
+            rows={4}
+            className="admin-input resize-none"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Дата</label>
+          <input
+            type="date"
+            value={form.createdAt}
+            onChange={e => setFormField('createdAt', e.target.value)}
+            className="admin-input"
+          />
+        </div>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={Boolean(form.approved)}
+            onChange={e => setFormField('approved', e.target.checked)}
+          />
+          Сразу опубликовать
+        </label>
+        <div className="sm:col-span-2 flex gap-2 justify-end">
+          <button
+            type="submit"
+            className="px-4 py-2 rounded-xl text-sm bg-primary text-primary-foreground font-medium hover:scale-[1.02] active:scale-95 transition-transform"
+          >
+            Добавить отзыв
+          </button>
+        </div>
+      </form>
+
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <select value={filter} onChange={e => setFilter(e.target.value as typeof filter)} className="admin-input text-sm w-fit">
+          <option value="pending">На модерации</option>
+          <option value="approved">Опубликованные</option>
+          <option value="all">Все</option>
+        </select>
+        <button
+          type="button"
+          onClick={() => loadReviews()}
+          className="px-3 py-2 rounded-xl border border-border text-xs text-muted-foreground hover:bg-muted transition-colors flex items-center gap-2"
+        >
+          <RotateCcw size={14} />
+          Обновить
+        </button>
+        {loading && <span className="text-xs text-muted-foreground">Загрузка...</span>}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="text-sm text-muted-foreground bg-card rounded-2xl p-6 border border-border/40 shadow-sm">Отзывов нет</div>
+      ) : (
+        <div className="grid gap-3">
+          {filtered.map(r => (
+            <div key={r.id} className="bg-card rounded-2xl p-4 border border-border/40 shadow-sm grid gap-2">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="font-display font-semibold text-sm">{r.authorName}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {productMap.get(r.productId) || r.productName || `Товар #${r.productId}`} · {formatDate(r.createdAt) || '—'}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`px-2 py-0.5 rounded-full text-[11px] ${r.approved ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                    {r.approved ? 'Опубликован' : 'На модерации'}
+                  </span>
+                  <span className="text-xs font-medium">{r.rating} / 5</span>
+                </div>
+              </div>
+              <div className="text-sm text-foreground/80 whitespace-pre-wrap">«{r.text}»</div>
+              <div className="flex flex-wrap gap-2 justify-end">
+                <button
+                  type="button"
+                  disabled={busyId === r.id}
+                  onClick={async () => {
+                    try {
+                      setBusyId(r.id);
+                      await api.updateReview(r.id, { approved: !r.approved });
+                      setReviews(prev => prev.map(x => x.id === r.id ? { ...x, approved: !x.approved } : x));
+                    } catch (err) {
+                      const code = err instanceof Error ? err.message : '';
+                      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                      else toast.error('Не удалось обновить отзыв');
+                    } finally {
+                      setBusyId(null);
+                    }
+                  }}
+                  className="px-3 py-2 rounded-xl text-xs border border-border text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                >
+                  {r.approved ? 'Снять с публикации' : 'Одобрить'}
+                </button>
+                <button
+                  type="button"
+                  disabled={busyId === r.id}
+                  onClick={async () => {
+                    try {
+                      setBusyId(r.id);
+                      await api.deleteReview(r.id);
+                      setReviews(prev => prev.filter(x => x.id !== r.id));
+                      toast.success('Удалено');
+                    } catch (err) {
+                      const code = err instanceof Error ? err.message : '';
+                      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                      else toast.error('Не удалось удалить отзыв');
+                    } finally {
+                      setBusyId(null);
+                    }
+                  }}
+                  className="px-3 py-2 rounded-xl text-xs border border-border text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors disabled:opacity-50"
+                >
+                  Удалить
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
