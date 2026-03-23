@@ -9,6 +9,7 @@ import Catalog from "./pages/Catalog";
 import AdminGate from "./pages/AdminGate";
 import ArticlePage from "./pages/ArticlePage";
 import ProductPage from "./pages/ProductPage";
+import Cart from "./pages/Cart";
 import ResetPasswordPage from "./pages/ResetPassword";
 import Account from "./pages/Account";
 import NotFound from "./pages/NotFound";
@@ -71,6 +72,7 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/catalog" element={<Catalog />} />
             <Route path="/product/:id" element={<ProductPage />} />
+            <Route path="/cart" element={<Cart />} />
             <Route path="/admin" element={<AdminGate />} />
             <Route path="/articles/:slug" element={<ArticlePage />} />
             <Route path="/reset" element={<ResetPasswordPage />} />

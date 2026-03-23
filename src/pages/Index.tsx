@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import Header from '@/components/candy-store/Header';
 import Hero from '@/components/candy-store/Hero';
 import Categories from '@/components/candy-store/Categories';
 import Products from '@/components/candy-store/Products';
-import CartDrawer from '@/components/candy-store/CartDrawer';
-import Checkout from '@/components/candy-store/Checkout';
 import Reviews from '@/components/candy-store/Reviews';
 import Benefits from '@/components/candy-store/Benefits';
 import Articles from '@/components/candy-store/Articles';
@@ -20,6 +19,7 @@ import type { Product } from '@/components/candy-store/data';
 const Index = () => {
   const cart = useCart();
   const store = useStore();
+  const navigate = useNavigate();
   const revealRef = useReveal();
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
@@ -114,9 +114,9 @@ const Index = () => {
 
   const handlePromoApply = useCallback(() => {
     cart.applyPromo('SWEET15');
-    cart.setIsCartOpen(true);
     toast.success('Промокод SWEET15 применён!');
-  }, [cart]);
+    navigate('/cart');
+  }, [cart, navigate]);
 
   const productCategoryIds = useMemo(() => {
     const set = new Set<string>();
@@ -153,7 +153,7 @@ const Index = () => {
 
   return (
     <div ref={revealRef} className="min-h-screen">
-      <Header cartCount={cart.count} onCartClick={() => cart.setIsCartOpen(true)} />
+      <Header cartCount={cart.count} onCartClick={() => navigate('/cart')} />
 
       <main>
         <Hero />
@@ -179,27 +179,6 @@ const Index = () => {
 
       <Footer />
 
-      <CartDrawer
-        open={cart.isCartOpen}
-        onClose={() => cart.setIsCartOpen(false)}
-        items={cart.items}
-        subtotal={cart.subtotal}
-        discount={cart.discount}
-        total={cart.total}
-        promoCode={cart.promoCode}
-        onUpdateQty={cart.updateQuantity}
-        onUpdatePackaging={cart.updatePackaging}
-        onRemove={cart.removeItem}
-        onApplyPromo={cart.applyPromo}
-        onCheckout={() => { cart.setIsCartOpen(false); cart.setIsCheckoutOpen(true); }}
-      />
-
-      <Checkout
-        open={cart.isCheckoutOpen}
-        onClose={() => cart.setIsCheckoutOpen(false)}
-        total={cart.total}
-        onPlaceOrder={cart.placeOrder}
-      />
     </div>
   );
 };

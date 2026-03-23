@@ -1,10 +1,8 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import Header from '@/components/candy-store/Header';
 import Products from '@/components/candy-store/Products';
-import CartDrawer from '@/components/candy-store/CartDrawer';
-import Checkout from '@/components/candy-store/Checkout';
 import Footer from '@/components/candy-store/Footer';
 import { useStore } from '@/components/candy-store/useStore';
 import { useCart } from '@/components/candy-store/useCart';
@@ -15,6 +13,7 @@ const Catalog = () => {
   const cart = useCart();
   const revealRef = useReveal();
   const { products, categories } = useStore();
+  const navigate = useNavigate();
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
 
@@ -163,7 +162,7 @@ const Catalog = () => {
 
   return (
     <div ref={revealRef} className="min-h-screen">
-      <Header cartCount={cart.count} onCartClick={() => cart.setIsCartOpen(true)} />
+      <Header cartCount={cart.count} onCartClick={() => navigate('/cart')} />
 
       <main>
         <section className="py-10 md:py-12">
@@ -303,27 +302,6 @@ const Catalog = () => {
 
       <Footer />
 
-      <CartDrawer
-        open={cart.isCartOpen}
-        onClose={() => cart.setIsCartOpen(false)}
-        items={cart.items}
-        subtotal={cart.subtotal}
-        discount={cart.discount}
-        total={cart.total}
-        promoCode={cart.promoCode}
-        onUpdateQty={cart.updateQuantity}
-        onUpdatePackaging={cart.updatePackaging}
-        onRemove={cart.removeItem}
-        onApplyPromo={cart.applyPromo}
-        onCheckout={() => { cart.setIsCartOpen(false); cart.setIsCheckoutOpen(true); }}
-      />
-
-      <Checkout
-        open={cart.isCheckoutOpen}
-        onClose={() => cart.setIsCheckoutOpen(false)}
-        total={cart.total}
-        onPlaceOrder={cart.placeOrder}
-      />
     </div>
   );
 };

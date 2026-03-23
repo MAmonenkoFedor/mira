@@ -1,11 +1,9 @@
 import { useMemo, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Clock, Tag } from 'lucide-react';
+import { Clock, Tag } from 'lucide-react';
 import { useStore } from '@/components/candy-store/useStore';
 import Header from '@/components/candy-store/Header';
 import Footer from '@/components/candy-store/Footer';
-import CartDrawer from '@/components/candy-store/CartDrawer';
-import Checkout from '@/components/candy-store/Checkout';
 import { useCart } from '@/components/candy-store/useCart';
 import { toast } from 'sonner';
 import { resolveMediaUrl } from '@/lib/api';
@@ -16,7 +14,7 @@ export default function ArticlePage() {
   const { slug } = useParams<{ slug: string }>();
   const { articles, products, badges, categories } = useStore() as any;
   const cart = useCart();
-  const nav = useNavigate();
+  const navigate = useNavigate();
   const article = articles.find(a => a.slug === slug);
   const linked = article?.productId ? products.find((p: any) => p.id === article.productId && (p.active ?? true)) : null;
   const linkedCategory = article?.categoryId ? categories.find((c: any) => c.id === article.categoryId) : null;
@@ -136,7 +134,7 @@ export default function ArticlePage() {
   return (
     <>
       <div className="min-h-screen bg-background">
-        <Header cartCount={cart.count} onCartClick={() => cart.setIsCartOpen(true)} />
+        <Header cartCount={cart.count} onCartClick={() => navigate('/cart')} />
 
         <main className="container max-w-2xl py-10 md:py-16">
           {/* Meta */}
@@ -211,7 +209,7 @@ export default function ArticlePage() {
                   <div className="mt-2 font-display font-bold text-primary">{linked.price} ₽</div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button
-                      onClick={() => { cart.addItem(linked, 1); cart.setIsCartOpen(true); toast.success('Добавлено!', { description: linked.name }); }}
+                      onClick={() => { cart.addItem(linked, 1); toast.success('Добавлено!', { description: linked.name }); }}
                       className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium">
                       Заказать: {linked.name}
                     </button>
@@ -243,26 +241,6 @@ export default function ArticlePage() {
           </div>
         </main>
         <Footer />
-        <CartDrawer
-          open={cart.isCartOpen}
-          onClose={() => cart.setIsCartOpen(false)}
-          items={cart.items}
-          subtotal={cart.subtotal}
-          discount={cart.discount}
-          total={cart.total}
-          promoCode={cart.promoCode}
-          onUpdateQty={cart.updateQuantity}
-          onUpdatePackaging={cart.updatePackaging}
-          onRemove={cart.removeItem}
-          onApplyPromo={cart.applyPromo}
-          onCheckout={() => { cart.setIsCartOpen(false); cart.setIsCheckoutOpen(true); }}
-        />
-        <Checkout
-          open={cart.isCheckoutOpen}
-          onClose={() => cart.setIsCheckoutOpen(false)}
-          total={cart.total}
-          onPlaceOrder={cart.placeOrder}
-        />
       </div>
     </>
   );

@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Header from '@/components/candy-store/Header';
 import Footer from '@/components/candy-store/Footer';
-import CartDrawer from '@/components/candy-store/CartDrawer';
-import Checkout from '@/components/candy-store/Checkout';
 import ProductCard from '@/components/candy-store/ProductCard';
 import { useCart } from '@/components/candy-store/useCart';
 import { useStore } from '@/components/candy-store/useStore';
@@ -14,6 +13,7 @@ import type { Order } from '@/components/candy-store/useStore';
 export default function Account() {
   const cart = useCart();
   const { favoriteProducts } = useStore();
+  const navigate = useNavigate();
   const [checked, setChecked] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -165,7 +165,7 @@ export default function Account() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header cartCount={cart.count} onCartClick={() => cart.setIsCartOpen(true)} />
+      <Header cartCount={cart.count} onCartClick={() => navigate('/cart')} />
 
       <main className="container py-10">
         <div className="max-w-4xl mx-auto grid gap-6">
@@ -348,27 +348,6 @@ export default function Account() {
 
       <Footer />
 
-      <CartDrawer
-        open={cart.isCartOpen}
-        onClose={() => cart.setIsCartOpen(false)}
-        items={cart.items}
-        subtotal={cart.subtotal}
-        discount={cart.discount}
-        total={cart.total}
-        promoCode={cart.promoCode}
-        onUpdateQty={cart.updateQuantity}
-        onUpdatePackaging={cart.updatePackaging}
-        onRemove={cart.removeItem}
-        onApplyPromo={cart.applyPromo}
-        onCheckout={() => { cart.setIsCartOpen(false); cart.setIsCheckoutOpen(true); }}
-      />
-
-      <Checkout
-        open={cart.isCheckoutOpen}
-        onClose={() => cart.setIsCheckoutOpen(false)}
-        total={cart.total}
-        onPlaceOrder={cart.placeOrder}
-      />
     </div>
   );
 }

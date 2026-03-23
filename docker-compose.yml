@@ -8,7 +8,7 @@ services:
       - "5432:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: postgres
       POSTGRES_DB: ${POSTGRES_DB:-miravkus}
     volumes:
       - db_data:/var/lib/postgresql/data
@@ -21,9 +21,11 @@ services:
     build: ./server
     container_name: miravkus_server
     restart: unless-stopped
+    ports:
+      - "3001:3001"
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@db:5432/miravkus}
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
+      DATABASE_URL: postgres://postgres:postgres@db:5432/miravkus
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8081}
       JWT_SECRET: ${JWT_SECRET:-dev_secret}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}
@@ -39,7 +41,7 @@ services:
     depends_on:
       - server
     ports:
-      - "8080:80"
+      - "8081:80"
 volumes:
   db_data:
   uploads_data:

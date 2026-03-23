@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Heart, Minus, Plus, Tag, Star } from 'lucide-react';
 import Header from '@/components/candy-store/Header';
 import Footer from '@/components/candy-store/Footer';
-import CartDrawer from '@/components/candy-store/CartDrawer';
-import Checkout from '@/components/candy-store/Checkout';
 import { useCart } from '@/components/candy-store/useCart';
 import { useStore } from '@/components/candy-store/useStore';
 import { api, resolveMediaUrl } from '@/lib/api';
@@ -32,6 +30,7 @@ function Stars({ count }: { count: number }) {
 export default function ProductPage() {
   const NONE_VALUE = '__none__';
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const cart = useCart();
   const { products, categories, badges, packagingOptions, toggleFavorite, isFavorite } = useStore();
 
@@ -60,14 +59,8 @@ export default function ProductPage() {
   const slides = useMemo(() => {
     if (!product) return [];
     const list = product.images && product.images.length ? product.images : [product.image];
-    const imageUrls = list.map((u: string) => resolveMediaUrl(u));
-    const videoUrl = product.videoUrl ? resolveMediaUrl(product.videoUrl) : '';
-    if (videoUrl) {
-      return [{ type: 'video' as const, url: videoUrl }, ...imageUrls.map((url) => ({ type: 'image' as const, url }))];
-    }
-    return imageUrls.map((url) => ({ type: 'image' as const, url }));
+    return list.map((u: string) => resolveMediaUrl(u));
   }, [product]);
-  const posterUrl = useMemo(() => resolveMediaUrl(product?.image), [product?.image]);
   const favorite = product ? isFavorite(product.id) : false;
   const activePackaging = useMemo(() => packagingOptions.filter(p => p.active), [packagingOptions]);
   const resolvedPackagingMode = product?.packagingMode ?? (product?.standardPackagingId ? 'standard' : 'selectable');
@@ -200,7 +193,7 @@ export default function ProductPage() {
     const title = `${product.name} — МираВкус`;
     const description = product.description?.slice(0, 160) || 'Детские сладости с доставкой по России.';
     const url = `${window.location.origin}/product/${product.id}`;
-    const image = slides.find(s => s.type === 'image') ? toAbs(slides.find(s => s.type === 'image')!.url) : `${window.location.origin}/images/hero-sweets.jpg`;
+    const image = slides[0] ? toAbs(slides[0]) : `${window.location.origin}/images/hero-sweets.jpg`;
     document.title = title;
     setMeta('name', 'description', description);
     setMeta('name', 'robots', 'index, follow');
@@ -265,7 +258,7 @@ export default function ProductPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header cartCount={cart.count} onCartClick={() => cart.setIsCartOpen(true)} />
+      <Header cartCount={cart.count} onCartClick={() => navigate('/cart')} />
 
       <main className="container py-10 md:py-14">
         <div className="mb-6 flex items-center gap-2 text-sm">
@@ -283,7 +276,7 @@ export default function ProductPage() {
                   <div className="hidden md:flex flex-col gap-2 max-h-[560px] overflow-auto pr-1">
                     {slides.map((slide, i: number) => (
                       <button
-                        key={slide.url + i}
+                        key={slide + i}
                         type="button"
                         onClick={() => setIdx(i)}
                         className={`rounded-2xl overflow-hidden border transition ${
@@ -291,18 +284,7 @@ export default function ProductPage() {
                         }`}
                         aria-label={`Слайд ${i + 1}`}
                       >
-                        {slide.type === 'video' ? (
-                          <video
-                            src={slide.url}
-                            poster={posterUrl || undefined}
-                            className="w-full aspect-square object-cover"
-                            muted
-                            playsInline
-                            preload="metadata"
-                          />
-                        ) : (
-                          <img src={slide.url} alt="" className="w-full aspect-square object-cover" />
-                        )}
+                        <img src={slide} alt="" className="w-full aspect-square object-cover" />
                       </button>
                     ))}
                   </div>
@@ -310,26 +292,12 @@ export default function ProductPage() {
 
                 <div className="relative rounded-2xl overflow-hidden bg-muted/20">
                   {slides.map((slide, i: number) => (
-                    slide.type === 'video' ? (
-                      <video
-                        key={slide.url + i}
-                        src={slide.url}
-                        poster={posterUrl || undefined}
-                        className={`w-full aspect-[3/4] max-h-[560px] object-contain transition-opacity duration-700 ${i === idx ? 'opacity-100' : 'opacity-0 absolute inset-0'}`}
-                        muted
-                        loop
-                        playsInline
-                        preload="metadata"
-                        autoPlay={i === idx}
-                      />
-                    ) : (
-                      <img
-                        key={slide.url + i}
-                        src={slide.url}
-                        alt={product.name}
-                        className={`w-full aspect-[3/4] max-h-[560px] object-contain transition-opacity duration-700 ${i === idx ? 'opacity-100' : 'opacity-0 absolute inset-0'}`}
-                      />
-                    )
+                    <img
+                      key={slide + i}
+                      src={slide}
+                      alt={product.name}
+                      className={`w-full aspect-[3/4] max-h-[560px] object-contain transition-opacity duration-700 ${i === idx ? 'opacity-100' : 'opacity-0 absolute inset-0'}`}
+                    />
                   ))}
                   {slides.length > 1 && (
                     <div className="md:hidden absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2 bg-black/20 backdrop-blur rounded-full px-3 py-1.5">
@@ -524,7 +492,6 @@ export default function ProductPage() {
                     const packagingArg = resolvedPackagingMode === 'selectable' ? (selectedPackagingId || null) : undefined;
                     cart.addItem(product, qty, packagingArg);
                     toast.success('Добавлено!', { description: product.name, duration: 2000 });
-                    cart.setIsCartOpen(true);
                   }}
                   className="flex-1 py-3.5 rounded-full bg-primary text-primary-foreground font-display font-semibold hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200 shadow-soft"
                 >
@@ -695,27 +662,6 @@ export default function ProductPage() {
         </SheetContent>
       </Sheet>
 
-      <CartDrawer
-        open={cart.isCartOpen}
-        onClose={() => cart.setIsCartOpen(false)}
-        items={cart.items}
-        subtotal={cart.subtotal}
-        discount={cart.discount}
-        total={cart.total}
-        promoCode={cart.promoCode}
-        onUpdateQty={cart.updateQuantity}
-        onUpdatePackaging={cart.updatePackaging}
-        onRemove={cart.removeItem}
-        onApplyPromo={cart.applyPromo}
-        onCheckout={() => { cart.setIsCartOpen(false); cart.setIsCheckoutOpen(true); }}
-      />
-
-      <Checkout
-        open={cart.isCheckoutOpen}
-        onClose={() => cart.setIsCheckoutOpen(false)}
-        total={cart.total}
-        onPlaceOrder={cart.placeOrder}
-      />
     </div>
   );
 }
