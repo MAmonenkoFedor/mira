@@ -12,6 +12,7 @@ import ProductPage from "./pages/ProductPage";
 import Cart from "./pages/Cart";
 import ResetPasswordPage from "./pages/ResetPassword";
 import Account from "./pages/Account";
+import About from "./pages/About";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -75,6 +76,7 @@ const App = () => (
             <Route path="/cart" element={<Cart />} />
             <Route path="/admin" element={<AdminGate />} />
             <Route path="/articles/:slug" element={<ArticlePage />} />
+            <Route path="/about" element={<About />} />
             <Route path="/reset" element={<ResetPasswordPage />} />
             <Route path="/account" element={<Account />} />
             <Route path="*" element={<NotFound />} />

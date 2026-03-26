@@ -174,6 +174,18 @@ export async function migrate(pool: Pool) {
       data jsonb not null
     );
   `);
+  await pool.query(`
+    create table if not exists feature_blocks_settings(
+      id integer primary key default 1,
+      data jsonb not null
+    );
+  `);
+  await pool.query(`
+    create table if not exists about_settings(
+      id integer primary key default 1,
+      data jsonb not null
+    );
+  `);
 
   await pool.query(`alter table products add column if not exists packaging_mode text`);
   await pool.query(`alter table products add column if not exists standard_packaging_id text references packaging_options(id)`);

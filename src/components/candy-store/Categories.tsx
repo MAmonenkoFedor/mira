@@ -47,27 +47,6 @@ export default function Categories({ activeCategory, onSelect, items, title, ena
           {title ?? 'Категории сладостей'}
         </h2>
 
-        {/* Large category cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6 reveal">
-          {top.map(cat => (
-            <button
-              key={cat.id}
-              onClick={() => handleClick(cat)}
-              className={`group flex flex-col items-center gap-3 p-5 rounded-3xl border-2 transition-all duration-300 hover:scale-[1.03] active:scale-[0.98] ${
-                (hierarchy ? activeTopId === cat.id : activeCategory === cat.id)
-                  ? 'border-primary shadow-candy bg-card'
-                  : 'border-transparent bg-card/60 hover:bg-card hover:shadow-candy'
-              }`}
-            >
-              <span className={`text-4xl w-16 h-16 flex items-center justify-center rounded-2xl ${colorMap[cat.color] || 'bg-muted'}`}>
-                {cat.emoji}
-              </span>
-              <span className="font-display font-medium text-sm text-center leading-snug">{cat.name}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Chips row */}
         <div className="flex flex-wrap gap-2 justify-center reveal">
           <button
             onClick={() => onSelect(null)}

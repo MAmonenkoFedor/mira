@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ShoppingCart, Menu, X, Search, ChevronDown, Heart, User, ShieldCheck } from 'lucide-react';
+import { ShoppingCart, Menu, X, Search, ChevronDown, Heart, User } from 'lucide-react';
 import { useStore } from './useStore';
 
 interface HeaderProps {
@@ -10,6 +10,7 @@ interface HeaderProps {
 
 const navLinks = [
   { label: 'Каталог', href: '/catalog' },
+  { label: 'О нас', href: '/about' },
   { label: 'Категории', href: '/#categories' },
   { label: 'Товары', href: '/#products' },
   { label: 'Отзывы', href: '/#reviews' },
@@ -86,26 +87,21 @@ export default function Header({ cartCount, onCartClick }: HeaderProps) {
   }, [products]);
 
   const catalogCategories = useMemo(() => {
-    const list = (categories || []).filter(c => c.id !== 'packaging' && productCategoryIds.has(c.id));
-    const find = (pred: (c: any) => boolean) => list.find(pred);
-    const picks = [
-      find(c => c.id.includes('asian') || /азиат/i.test(c.name)),
-      find(c => c.id === 'gift' || /подароч/i.test(c.name)),
-      find(c => c.id.includes('truffle') || /трюф/i.test(c.name)),
-    ].filter(Boolean);
-    const uniq = new Map<string, any>();
-    for (const c of picks) uniq.set(c.id, c);
-    if (uniq.size < 3) {
-      for (const c of list) {
-        if (uniq.size >= 6) break;
-        if (!uniq.has(c.id) && !c.id.includes('/')) uniq.set(c.id, c);
-      }
-    }
-    return Array.from(uniq.values());
+    const list = categories || [];
+    const withIndex = list.map((c, index) => ({ c, index }));
+    return withIndex
+      .filter(({ c }) => (c.showOnHome ?? (!c.id.includes('/') && c.id !== 'packaging')) && productCategoryIds.has(c.id))
+      .sort((a, b) => {
+        const ao = typeof a.c.homeOrder === 'number' ? a.c.homeOrder : Number.POSITIVE_INFINITY;
+        const bo = typeof b.c.homeOrder === 'number' ? b.c.homeOrder : Number.POSITIVE_INFINITY;
+        if (ao !== bo) return ao - bo;
+        return a.index - b.index;
+      })
+      .map(({ c }) => c);
   }, [categories, productCategoryIds]);
 
-  const hasSale = useMemo(() => badges.some(b => b.id === 'sale' && b.active !== false), [badges]);
   const hasNew = useMemo(() => badges.some(b => b.id === 'new' && b.active !== false), [badges]);
+  const hasHit = useMemo(() => badges.some(b => b.id === 'hit' && b.active !== false), [badges]);
 
   return (
     <header className="sticky top-0 z-50 bg-card/90 backdrop-blur-md border-b border-border/60 shadow-sm">
@@ -139,28 +135,19 @@ export default function Header({ cartCount, onCartClick }: HeaderProps) {
               aria-haspopup="menu"
             >
               <Menu size={16} />
-              Каталог
+              Меню
               <ChevronDown size={16} />
             </button>
             {catalogOpen && (
               <div className="absolute left-0 mt-2 w-[320px] rounded-3xl border border-border/60 bg-card shadow-lg p-4 z-50">
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">Разделы</div>
                 <div className="grid grid-cols-1 gap-1 mb-3">
-                  {hasSale && (
-                    <Link
-                      to="/catalog?badge=sale"
-                      onClick={() => setCatalogOpen(false)}
-                      className="px-3 py-2 rounded-2xl text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors"
-                    >
-                      Скидки
-                    </Link>
-                  )}
                   <Link
-                    to="/catalog?sort=popular"
+                    to="/catalog"
                     onClick={() => setCatalogOpen(false)}
                     className="px-3 py-2 rounded-2xl text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors"
                   >
-                    Хиты продаж
+                    Все товары
                   </Link>
                   {hasNew && (
                     <Link
@@ -171,6 +158,13 @@ export default function Header({ cartCount, onCartClick }: HeaderProps) {
                       Новинки
                     </Link>
                   )}
+                  <Link
+                    to={hasHit ? "/catalog?badge=hit" : "/catalog?sort=popular"}
+                    onClick={() => setCatalogOpen(false)}
+                    className="px-3 py-2 rounded-2xl text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors"
+                  >
+                    Хиты продаж
+                  </Link>
                 </div>
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">Категории</div>
                 <div className="grid grid-cols-1 gap-1">
@@ -184,6 +178,15 @@ export default function Header({ cartCount, onCartClick }: HeaderProps) {
                       {c.name}
                     </Link>
                   ))}
+                </div>
+                <div className="mt-3 pt-3 border-t border-border/40">
+                  <Link
+                    to="/about"
+                    onClick={() => setCatalogOpen(false)}
+                    className="px-3 py-2 rounded-2xl text-sm font-medium text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors block"
+                  >
+                    О нас
+                  </Link>
                 </div>
               </div>
             )}
@@ -221,12 +224,6 @@ export default function Header({ cartCount, onCartClick }: HeaderProps) {
                 {cartCount}
               </span>
             )}
-          </button>
-          <button
-            className="hidden md:inline-flex p-2 rounded-xl text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors"
-            aria-label="Гарантии"
-          >
-            <ShieldCheck size={18} />
           </button>
           <Link
             to="/account"

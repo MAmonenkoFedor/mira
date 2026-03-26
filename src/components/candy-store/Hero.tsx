@@ -15,13 +15,17 @@ export default function Hero() {
     const t = setInterval(() => setIdx(i => (i + 1) % slides.length), 5000);
     return () => clearInterval(t);
   }, [slides.length]);
-  const floatingCandies = [
-    { emoji: '🍭', className: 'candy-float-1 top-[10%] left-[8%] text-4xl md:text-5xl' },
-    { emoji: '🍬', className: 'candy-float-2 top-[20%] right-[12%] text-3xl md:text-4xl' },
-    { emoji: '🧁', className: 'candy-float-3 bottom-[15%] left-[15%] text-3xl md:text-4xl' },
-    { emoji: '🍩', className: 'candy-float-4 top-[60%] right-[8%] text-4xl md:text-5xl' },
-    { emoji: '🍪', className: 'candy-float-2 top-[5%] right-[40%] text-2xl md:text-3xl' },
+  const candySlots = [
+    'candy-float-1 top-[10%] left-[8%] text-4xl md:text-5xl',
+    'candy-float-2 top-[20%] right-[12%] text-3xl md:text-4xl',
+    'candy-float-3 bottom-[15%] left-[15%] text-3xl md:text-4xl',
+    'candy-float-4 top-[60%] right-[8%] text-4xl md:text-5xl',
+    'candy-float-2 top-[5%] right-[40%] text-2xl md:text-3xl',
   ];
+  const floatingCandies = (heroText.floatingCandiesEnabled ? heroText.floatingCandies : []).map((emoji, i) => ({
+    emoji,
+    className: candySlots[i % candySlots.length],
+  }));
 
   return (
     <section className="relative overflow-hidden candy-gradient-bg candy-pattern min-h-[560px] md:min-h-[680px] flex items-center">

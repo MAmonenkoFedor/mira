@@ -190,6 +190,23 @@ const HeroTextSchema = z.object({
   title: z.string().min(1),
   accent: z.string().min(1),
   subtitle: z.string().min(1),
+  floatingCandiesEnabled: z.boolean().optional().default(true),
+  floatingCandies: z.array(z.string().min(1)).optional().default(["🍭", "🍬", "🧁", "🍩", "🍪"]),
+});
+const FeatureBlockSchema = z.object({
+  id: z.string().min(1),
+  icon: z.string().min(1),
+  title: z.string().min(1),
+  description: z.string(),
+  link: z.string().optional().nullable(),
+  bgColor: z.string().min(1),
+});
+const FeatureBlocksSchema = z.array(FeatureBlockSchema).min(1);
+const AboutSchema = z.object({
+  title: z.string().min(1),
+  subtitle: z.string().min(1),
+  content: z.string().min(1),
+  images: z.array(z.string().min(1)).optional(),
 });
 const defaultFooter = {
   brandEmoji: "🍬",
@@ -213,6 +230,48 @@ const defaultHeroText = {
   title: "Сладкое счастье",
   accent: "для детей",
   subtitle: "Натуральные конфеты, шоколад и подарочные наборы — с любовью для самых маленьких сладкоежек",
+  floatingCandiesEnabled: true,
+  floatingCandies: ["🍭", "🍬", "🧁", "🍩", "🍪"],
+};
+const defaultFeatureBlocks = [
+  {
+    id: "delivery",
+    icon: "Truck",
+    title: "Быстрая доставка",
+    description: "От 1 дня по Москве",
+    link: "/articles/dostavka",
+    bgColor: "bg-candy-pink",
+  },
+  {
+    id: "natural",
+    icon: "ShieldCheck",
+    title: "Натуральный состав",
+    description: "Без вредных добавок",
+    link: "/articles/naturalnyy-sostav",
+    bgColor: "bg-candy-mint",
+  },
+  {
+    id: "gift",
+    icon: "Gift",
+    title: "Подарочная упаковка",
+    description: "Бесплатно к каждому набору",
+    link: "/articles/podarochnaya-upakovka",
+    bgColor: "bg-candy-lavender",
+  },
+  {
+    id: "love",
+    icon: "Heart",
+    title: "Сделано с любовью",
+    description: "Ручная работа кондитеров",
+    link: "/articles/sdelano-s-lyubovyu",
+    bgColor: "bg-candy-banana",
+  },
+];
+const defaultAbout = {
+  title: "О нас",
+  subtitle: "Сладости, которые дарят радость и заботу",
+  content: "МираВкус — это команда, которая превращает сладости в маленькие праздники. Мы выбираем ингредиенты с вниманием к составу и вкусу, чтобы наборы радовали детей и взрослых.\n\nКаждый подарок мы собираем вручную: подбираем гармоничные сочетания, проверяем свежесть и аккуратно упаковываем, чтобы впечатление было идеальным.\n\nНам важно, чтобы сладости были не только красивыми, но и честными по составу. Поэтому мы сотрудничаем с проверенными поставщиками и следим за качеством каждой партии.",
+  images: ["/images/hero-sweets.jpg", "/images/gift-box.jpg", "/images/cookies.jpg"],
 };
 
 app.post("/api/auth/login", rateLimitMiddleware(10, 15 * 60 * 1000), async (req, res) => {
@@ -903,13 +962,30 @@ app.get("/api/hero-text", async (_req, res) => {
   const { rows } = await pool.query("select data from hero_text_settings where id=1");
   if (!rows[0]) return res.json(defaultHeroText);
   const data = rows[0].data || defaultHeroText;
-  res.json(data);
+  res.json({ ...defaultHeroText, ...data });
 });
 
 app.put("/api/hero-text", requireAuth(async (req, res) => {
   const data = HeroTextSchema.parse(req.body);
   await pool.query(
     "insert into hero_text_settings(id,data) values(1,$1) on conflict (id) do update set data=excluded.data",
+    [data]
+  );
+  res.json({ ok: true });
+}));
+
+app.get("/api/feature-blocks", async (_req, res) => {
+  const { rows } = await pool.query("select data from feature_blocks_settings where id=1");
+  if (!rows[0]) return res.json(defaultFeatureBlocks);
+  const data = rows[0].data;
+  if (!Array.isArray(data)) return res.json(defaultFeatureBlocks);
+  res.json(data);
+});
+
+app.put("/api/feature-blocks", requireAuth(async (req, res) => {
+  const data = FeatureBlocksSchema.parse(req.body);
+  await pool.query(
+    "insert into feature_blocks_settings(id,data) values(1,$1) on conflict (id) do update set data=excluded.data",
     [data]
   );
   res.json({ ok: true });
@@ -926,6 +1002,22 @@ app.put("/api/footer", requireAuth(async (req, res) => {
   const data = FooterSchema.parse(req.body);
   await pool.query(
     "insert into footer_settings(id,data) values(1,$1) on conflict (id) do update set data=excluded.data",
+    [data]
+  );
+  res.json({ ok: true });
+}));
+
+app.get("/api/about", async (_req, res) => {
+  const { rows } = await pool.query("select data from about_settings where id=1");
+  if (!rows[0]) return res.json(defaultAbout);
+  const data = rows[0].data || defaultAbout;
+  res.json({ ...defaultAbout, ...data });
+});
+
+app.put("/api/about", requireAuth(async (req, res) => {
+  const data = AboutSchema.parse(req.body);
+  await pool.query(
+    "insert into about_settings(id,data) values(1,$1) on conflict (id) do update set data=excluded.data",
     [data]
   );
   res.json({ ok: true });

@@ -79,6 +79,12 @@ export const api = {
   async updateHeroText(p: any) {
     return j(fetch(`${base}/api/hero-text`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
   },
+  async getFeatureBlocks() {
+    return j(fetch(`${base}/api/feature-blocks`));
+  },
+  async updateFeatureBlocks(p: any) {
+    return j(fetch(`${base}/api/feature-blocks`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+  },
   async getPromoBanners() {
     return j(fetch(`${base}/api/promo-banners`));
   },
@@ -105,6 +111,12 @@ export const api = {
   },
   async updateFooter(p: any) {
     return j(fetch(`${base}/api/footer`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+  },
+  async getAbout() {
+    return j(fetch(`${base}/api/about`));
+  },
+  async updateAbout(p: any) {
+    return j(fetch(`${base}/api/about`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
   },
   async updateOrder(id: number, p: any) {
     return j(fetch(`${base}/api/orders/${id}`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));

@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, Package, FileText, Tag, Gift, Upload, X, Percent, Image as ImageIcon, ArrowUp, ArrowDown, BadgeCheck, ClipboardList, Star } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, Package, FileText, Tag, Gift, Upload, X, Percent, Image as ImageIcon, ArrowUp, ArrowDown, BadgeCheck, ClipboardList, Star, Heart } from 'lucide-react';
 import { toast } from 'sonner';
 import { useStore, type Article, type Order } from '@/components/candy-store/useStore';
 import { api, resolveMediaUrl } from '@/lib/api';
 import { badgeToneSoftClasses, badgeToneClasses } from '@/components/candy-store/data';
-import type { Product, Category, Promo, PromoScope, Badge, BadgeTone, PackagingOption, Review } from '@/components/candy-store/data';
+import type { Product, Category, Promo, PromoScope, Badge, BadgeTone, PackagingOption, Review, FeatureBlock } from '@/components/candy-store/data';
 
-type Tab = 'products' | 'categories' | 'packaging' | 'articles' | 'promos' | 'actions' | 'import' | 'hero' | 'badges' | 'orders' | 'footer' | 'reviews';
+type Tab = 'products' | 'categories' | 'packaging' | 'articles' | 'promos' | 'actions' | 'import' | 'hero' | 'badges' | 'orders' | 'footer' | 'reviews' | 'benefits' | 'about';
 
 const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader();
@@ -183,6 +183,8 @@ export default function Admin() {
     { key: 'promos', icon: Percent, label: 'Промокоды', count: store.promos?.length || 0 },
     { key: 'actions', icon: ImageIcon, label: 'Акции', count: store.promoBanners?.length || 0 },
     { key: 'hero', icon: ImageIcon, label: 'Баннер', count: store.heroImages?.length || 0 },
+    { key: 'benefits', icon: Heart, label: 'Преимущества', count: store.featureBlocks?.length || 0 },
+    { key: 'about', icon: FileText, label: 'О нас', count: 1 },
     { key: 'footer', icon: ImageIcon, label: 'Футер', count: 0 },
     { key: 'import', icon: Upload, label: 'Импорт', count: 0 },
   ];
@@ -306,6 +308,8 @@ export default function Admin() {
               {tab === 'actions' && <PromoBannersTab store={store} />}
               {tab === 'import' && <ImportTab store={store} />}
               {tab === 'hero' && <HeroTab store={store} />}
+              {tab === 'benefits' && <FeatureBlocksTab store={store} />}
+              {tab === 'about' && <AboutTab store={store} />}
               {tab === 'footer' && <FooterTab store={store} />}
             </div>
           </main>
@@ -546,12 +550,16 @@ function HeroTab({ store }: { store: ReturnType<typeof useStore> }) {
     title: store.heroText.title,
     accent: store.heroText.accent,
     subtitle: store.heroText.subtitle,
+    floatingCandiesEnabled: store.heroText.floatingCandiesEnabled,
+    floatingCandiesText: store.heroText.floatingCandies.join('\n'),
   }));
   useEffect(() => {
     setTextForm({
       title: store.heroText.title,
       accent: store.heroText.accent,
       subtitle: store.heroText.subtitle,
+      floatingCandiesEnabled: store.heroText.floatingCandiesEnabled,
+      floatingCandiesText: store.heroText.floatingCandies.join('\n'),
     });
   }, [store.heroText]);
   const add = async () => {
@@ -597,11 +605,21 @@ function HeroTab({ store }: { store: ReturnType<typeof useStore> }) {
         const title = textForm.title.trim();
         const accent = textForm.accent.trim();
         const subtitle = textForm.subtitle.trim();
+        const floatingCandies = textForm.floatingCandiesText
+          .split(/[\s,]+/)
+          .map(v => v.trim())
+          .filter(Boolean);
         if (!title) { toast.error('Введите заголовок'); return; }
         if (!accent) { toast.error('Введите акцент'); return; }
         if (!subtitle) { toast.error('Введите подзаголовок'); return; }
         try {
-          await store.updateHeroText({ title, accent, subtitle });
+          await store.updateHeroText({
+            title,
+            accent,
+            subtitle,
+            floatingCandiesEnabled: textForm.floatingCandiesEnabled,
+            floatingCandies,
+          });
           toast.success('Текст хиро обновлён');
         } catch (err) {
           const code = err instanceof Error ? err.message : '';
@@ -641,6 +659,26 @@ function HeroTab({ store }: { store: ReturnType<typeof useStore> }) {
             rows={3}
             className="admin-input resize-none"
             placeholder="Натуральные конфеты, шоколад и подарочные наборы..."
+          />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={textForm.floatingCandiesEnabled}
+              onChange={e => setTextForm(v => ({ ...v, floatingCandiesEnabled: e.target.checked }))}
+            />
+            Плавающие сладости
+          </label>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Эмодзи для фона</label>
+          <textarea
+            value={textForm.floatingCandiesText}
+            onChange={e => setTextForm(v => ({ ...v, floatingCandiesText: e.target.value }))}
+            rows={3}
+            className="admin-input resize-none"
+            placeholder="🍭\n🍬\n🧁\n🍩\n🍪"
           />
         </div>
         <div className="flex justify-end">
@@ -2827,6 +2865,234 @@ function ArticleForm({ article, onSave, onCancel, products, categories }: {
         <button type="submit"
           className="px-4 py-2 rounded-xl text-sm bg-primary text-primary-foreground font-medium hover:scale-[1.02] active:scale-95 transition-transform">
           {article ? 'Сохранить' : 'Добавить'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function FeatureBlocksTab({ store }: { store: ReturnType<typeof useStore> }) {
+  const [blocks, setBlocks] = useState<FeatureBlock[]>(store.featureBlocks || []);
+  const iconOptions = [
+    { value: 'Truck', label: '🚚 Доставка' },
+    { value: 'ShieldCheck', label: '🛡️ Состав' },
+    { value: 'Gift', label: '🎁 Упаковка' },
+    { value: 'Heart', label: '❤️ Любовь' },
+  ];
+  const colorOptions = [
+    { value: 'bg-candy-pink', label: '🩷 Розовый' },
+    { value: 'bg-candy-mint', label: '🌿 Мятный' },
+    { value: 'bg-candy-lavender', label: '💜 Лавандовый' },
+    { value: 'bg-candy-blue', label: '💙 Голубой' },
+    { value: 'bg-candy-banana', label: '💛 Банановый' },
+  ];
+
+  useEffect(() => {
+    setBlocks(store.featureBlocks || []);
+  }, [store.featureBlocks]);
+
+  const updateBlock = (id: string, patch: Partial<FeatureBlock>) => {
+    setBlocks(prev => prev.map(b => b.id === id ? { ...b, ...patch } : b));
+  };
+
+  const handleSave = async () => {
+    if (!blocks.length) { toast.error('Добавьте хотя бы один блок'); return; }
+    try {
+      await store.updateFeatureBlocks(blocks.map(b => ({
+        ...b,
+        title: b.title?.trim() || 'Без названия',
+        description: b.description?.trim() || '',
+        link: b.link?.trim() || '',
+        icon: b.icon || 'Truck',
+        bgColor: b.bgColor || 'bg-candy-pink',
+      })));
+      toast.success('Блоки обновлены');
+    } catch (err) {
+      const code = err instanceof Error ? err.message : '';
+      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+      else toast.error('Не удалось обновить блоки');
+    }
+  };
+
+  return (
+    <div className="grid gap-4">
+      {blocks.map((b) => (
+        <div key={b.id} className="bg-card rounded-2xl p-5 border border-border/40 shadow-sm grid gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Заголовок</label>
+              <input value={b.title} onChange={e => updateBlock(b.id, { title: e.target.value })} maxLength={60}
+                className="admin-input" placeholder="Быстрая доставка" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Ссылка</label>
+              <input value={b.link} onChange={e => updateBlock(b.id, { link: e.target.value })}
+                className="admin-input" placeholder="/articles/..." />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Описание</label>
+            <textarea value={b.description} onChange={e => updateBlock(b.id, { description: e.target.value })} maxLength={160}
+              rows={2} className="admin-input resize-none" placeholder="Короткое описание" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Иконка</label>
+              <select value={b.icon} onChange={e => updateBlock(b.id, { icon: e.target.value })} className="admin-input">
+                {iconOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Цвет фона</label>
+              <select value={b.bgColor} onChange={e => updateBlock(b.id, { bgColor: e.target.value })} className="admin-input">
+                {colorOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+      ))}
+      <div className="flex justify-end">
+        <button type="button" onClick={handleSave}
+          className="px-4 py-2 rounded-xl text-sm bg-primary text-primary-foreground font-medium hover:scale-[1.02] active:scale-95 transition-transform">
+          Сохранить
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AboutTab({ store }: { store: ReturnType<typeof useStore> }) {
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const [form, setForm] = useState(() => ({
+    title: store.about.title,
+    subtitle: store.about.subtitle,
+    content: store.about.content,
+    images: store.about.images || [],
+  }));
+
+  useEffect(() => {
+    setForm({
+      title: store.about.title,
+      subtitle: store.about.subtitle,
+      content: store.about.content,
+      images: store.about.images || [],
+    });
+  }, [store.about]);
+
+  const set = (k: keyof typeof form, v: any) => setForm(f => ({ ...f, [k]: v }));
+  const maxImages = 8;
+
+  const addImages = async (files: FileList | null) => {
+    if (!files || !files.length) return;
+    if (form.images.length >= maxImages) { toast.error('Макс. 8 фото'); return; }
+    const list = Array.from(files);
+    const next: string[] = [];
+    for (const file of list) {
+      if (!file.type.startsWith('image/')) { toast.error('Только изображения'); continue; }
+      if (file.size > 5 * 1024 * 1024) { toast.error('Макс. размер 5 МБ'); continue; }
+      try {
+        const dataUrl = await readFileAsDataUrl(file);
+        next.push(dataUrl);
+      } catch {
+        toast.error('Не удалось обработать изображение');
+      }
+    }
+    if (!next.length) return;
+    const space = maxImages - form.images.length;
+    const slice = next.slice(0, space);
+    if (slice.length < next.length) toast.error('Макс. 8 фото');
+    set('images', [...form.images, ...slice]);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.title.trim()) { toast.error('Введите заголовок'); return; }
+    if (!form.subtitle.trim()) { toast.error('Введите подзаголовок'); return; }
+    if (!form.content.trim()) { toast.error('Введите текст'); return; }
+    let images: string[] = [];
+    try {
+      for (const u of form.images) {
+        if (u.startsWith('data:image/')) {
+          const webpUrl = await toWebpDataUrl(u);
+          const res = await api.uploadArticleImage(webpUrl) as { url: string };
+          images.push(res.url);
+        } else {
+          images.push(u);
+        }
+      }
+    } catch {
+      images = form.images;
+    }
+    try {
+      await store.updateAbout({
+        title: form.title.trim(),
+        subtitle: form.subtitle.trim(),
+        content: form.content.trim(),
+        images,
+      });
+      toast.success('Блок "О нас" обновлён');
+    } catch (err) {
+      const code = err instanceof Error ? err.message : '';
+      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+      else toast.error('Не удалось сохранить блок');
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-card rounded-2xl p-5 border border-border/40 shadow-sm grid gap-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Заголовок</label>
+          <input value={form.title} onChange={e => set('title', e.target.value)} maxLength={80}
+            className="admin-input" placeholder="О нас" />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Подзаголовок</label>
+          <input value={form.subtitle} onChange={e => set('subtitle', e.target.value)} maxLength={120}
+            className="admin-input" placeholder="Короткая идея бренда" />
+        </div>
+      </div>
+      <div>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Текст</label>
+        <textarea value={form.content} onChange={e => set('content', e.target.value)} rows={8} maxLength={2000}
+          className="admin-input resize-none" placeholder="История бренда, ценности, подход..." />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Галерея (до 8 фото)</label>
+        <div className="grid gap-2">
+          <div className="flex flex-wrap gap-2">
+            {form.images.map((u, i) => (
+              <div key={i} className="relative">
+                <img src={resolveMediaUrl(u)} alt="" className="w-20 h-20 object-cover rounded-xl border" />
+                <button type="button" onClick={() => set('images', form.images.filter((_, idx) => idx !== i))}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center">
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => galleryInputRef.current?.click()}
+              className="px-3 py-2 rounded-xl border border-border text-xs text-muted-foreground hover:bg-muted transition-colors flex items-center gap-2">
+              <Upload size={14} />
+              Добавить фото
+            </button>
+            <span className="text-[11px] text-muted-foreground">Добавлено: {form.images.length}/{maxImages}</span>
+            <input
+              ref={galleryInputRef}
+              type="file"
+              multiple
+              accept="image/*"
+              className="hidden"
+              onChange={e => { addImages(e.target.files); e.currentTarget.value = ''; }}
+            />
+          </div>
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <button type="submit"
+          className="px-4 py-2 rounded-xl text-sm bg-primary text-primary-foreground font-medium hover:scale-[1.02] active:scale-95 transition-transform">
+          Сохранить
         </button>
       </div>
     </form>

@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { api } from '@/lib/api';
 import { getToken } from '@/lib/auth';
-import { products as defaultProducts, categories as defaultCategories, badges as defaultBadges, packagingOptions as defaultPackagingOptions, footerData, heroTextData, type FooterData, type HeroTextData, type Product, type Category, type Promo, type Badge, type PackagingOption, type PromoBanner } from './data';
+import { products as defaultProducts, categories as defaultCategories, badges as defaultBadges, packagingOptions as defaultPackagingOptions, footerData, heroTextData, featureBlocks as defaultFeatureBlocks, aboutData, type FeatureBlock, type FooterData, type HeroTextData, type AboutData, type Product, type Category, type Promo, type Badge, type PackagingOption, type PromoBanner } from './data';
 
 export interface Article {
   id: number;
@@ -58,7 +58,77 @@ const defaultArticles: Article[] = [
     content: 'Шоколад — один из самых любимых десертов в мире. Но когда речь идёт о детях, у родителей возникает множество вопросов.\n\n## С какого возраста можно давать шоколад?\n\nБольшинство педиатров рекомендуют:\n- **До 1,5 лет** — никакого шоколада\n- **1,5–3 года** — можно попробовать белый шоколад (без кофеина)\n- **С 3 лет** — молочный шоколад в небольших количествах (до 25 г в день)\n- **С 7 лет** — можно пробовать тёмный шоколад\n\n## Польза шоколада\n\n**Тёмный шоколад (70%+ какао)** содержит:\n- Антиоксиданты (флавоноиды)\n- Магний и железо\n- Теобромин — мягко стимулирует нервную систему\n\n## Возможный вред\n\n- **Кариес** — сахар в молочном шоколаде опасен для зубов\n- **Аллергия** — какао-бобы могут вызвать реакцию\n- **Перевозбуждение** — кофеин и теобромин могут нарушать сон\n\n## Какой шоколад выбрать?\n\nИщите шоколад с коротким составом: какао-масло, какао тёртое, сахар. Без пальмового масла, без ароматизаторов. В нашем магазине все шоколадные изделия проходят строгий отбор по составу.',
     tag: 'Здоровье', readTime: '6 мин',
   },
+  {
+    id: 4, slug: 'dostavka',
+    title: 'Доставка сладостей: быстро и удобно',
+    excerpt: 'Сроки, варианты и правила доставки по Москве и России. Рассказываем, как всё организовано.',
+    content: 'Мы доставляем заказы по Москве и регионам России — быстро и бережно.\n\n## Варианты доставки\n\n- **Курьер по Москве** — от 1 дня\n- **ПВЗ по России** — от 2–4 дней\n\n## Как мы упаковываем\n\nКаждый набор надёжно фиксируется, чтобы сладости доехали в идеальном виде. Для жаркого сезона добавляем термопакеты.\n\n## Отслеживание\n\nПосле отправки вы получаете трек-номер и можете следить за статусом посылки.',
+    tag: 'Новости', readTime: '3 мин',
+  },
+  {
+    id: 5, slug: 'naturalnyy-sostav',
+    title: 'Натуральный состав и качество',
+    excerpt: 'Без лишних добавок и искусственных красителей. В составе только качественные ингредиенты.',
+    content: 'Мы выбираем ингредиенты, которые подходят детям и безопасны для ежедневных угощений.\n\n## Что внутри\n\n- натуральные ароматизаторы\n- качественное какао и молоко\n- минимум сахара там, где это возможно\n\n## Контроль качества\n\nПоставщики проходят отбор, а каждая партия проверяется на свежесть и соблюдение условий хранения.',
+    tag: 'Советы', readTime: '4 мин',
+  },
+  {
+    id: 6, slug: 'podarochnaya-upakovka',
+    title: 'Подарочная упаковка',
+    excerpt: 'Как мы оформляем наборы, чтобы подарок выглядел празднично и радовал получателя.',
+    content: 'Подарочная упаковка — это часть впечатления. Мы используем плотные коробки, аккуратные ленты и тематические открытки.\n\n## Что входит\n\n- фирменная коробка\n- декоративная лента\n- открытка с пожеланием\n\nЕсли нужен особый стиль или цвет, напишите в комментарии к заказу.',
+    tag: 'Обзор', readTime: '3 мин',
+  },
+  {
+    id: 7, slug: 'sdelano-s-lyubovyu',
+    title: 'Сделано с любовью',
+    excerpt: 'Немного о ручной работе кондитеров и о том, почему это важно для вкуса.',
+    content: 'Наши наборы собираются вручную: от подбора вкусов до финальной упаковки.\n\n## Почему это важно\n\nРучная работа позволяет контролировать качество каждой позиции и создавать красивые, гармоничные наборы. Мы уделяем внимание деталям и гарантируем свежесть каждого изделия.',
+    tag: 'Рецепты', readTime: '2 мин',
+  },
 ];
+
+const normalizeArticles = (list: Article[]) => {
+  const map = new Map<string, Article>();
+  for (const a of list) {
+    const slug = a.slug ? a.slug : `article-${a.id}`;
+    map.set(slug, { ...a, slug });
+  }
+  for (const a of defaultArticles) {
+    const slug = a.slug ? a.slug : `article-${a.id}`;
+    if (!map.has(slug)) map.set(slug, a);
+  }
+  return Array.from(map.values());
+};
+
+const normalizeHeroText = (input: unknown): HeroTextData => {
+  const data = input && typeof input === 'object' ? (input as Partial<HeroTextData>) : {};
+  const floatingCandiesEnabled = typeof data.floatingCandiesEnabled === 'boolean'
+    ? data.floatingCandiesEnabled
+    : heroTextData.floatingCandiesEnabled;
+  const rawCandies = Array.isArray(data.floatingCandies) ? data.floatingCandies : heroTextData.floatingCandies;
+  const floatingCandies = rawCandies
+    .map(v => String(v).trim())
+    .filter(Boolean);
+  return {
+    ...heroTextData,
+    ...data,
+    floatingCandiesEnabled,
+    floatingCandies: floatingCandies.length ? floatingCandies : heroTextData.floatingCandies,
+  };
+};
+
+const normalizeAbout = (input: unknown): AboutData => {
+  const data = input && typeof input === 'object' ? (input as Partial<AboutData>) : {};
+  const rawImages = Array.isArray(data.images) ? data.images : aboutData.images;
+  const images = rawImages.map(v => String(v).trim()).filter(Boolean);
+  return {
+    title: typeof data.title === 'string' ? data.title : aboutData.title,
+    subtitle: typeof data.subtitle === 'string' ? data.subtitle : aboutData.subtitle,
+    content: typeof data.content === 'string' ? data.content : aboutData.content,
+    images: images.length ? images : aboutData.images,
+  };
+};
 
 function load<T>(key: string, fallback: T): T {
   try {
@@ -93,7 +163,7 @@ export function useStore() {
   });
   const [articles, setArticles] = useState<Article[]>(() => {
     const loaded = load('candy_articles', defaultArticles);
-    return loaded.map(a => a.slug ? a : { ...a, slug: `article-${a.id}` });
+    return normalizeArticles(loaded as Article[]);
   });
   const [heroImages, setHeroImages] = useState<HeroImage[]>(() =>
     load('candy_hero_images', [{ id: 1, url: '/images/hero-sweets.jpg', position: 0, active: true }])
@@ -113,7 +183,9 @@ export function useStore() {
     return Array.isArray(loaded) ? loaded.map((v: unknown) => Number(v)).filter(v => Number.isFinite(v)) : [];
   });
   const [footer, setFooter] = useState<FooterData>(() => load('candy_footer', footerData));
-  const [heroText, setHeroText] = useState<HeroTextData>(() => load('candy_hero_text', heroTextData));
+  const [heroText, setHeroText] = useState<HeroTextData>(() => normalizeHeroText(load('candy_hero_text', heroTextData)));
+  const [featureBlocks, setFeatureBlocks] = useState<FeatureBlock[]>(() => load('candy_feature_blocks', defaultFeatureBlocks));
+  const [about, setAbout] = useState<AboutData>(() => normalizeAbout(load('candy_about', aboutData)));
   const [apiReady, setApiReady] = useState<boolean>(false);
   const [promos, setPromos] = useState<Promo[]>([]);
 
@@ -128,12 +200,14 @@ export function useStore() {
   useEffect(() => save('candy_favorites', favorites), [favorites]);
   useEffect(() => save('candy_footer', footer), [footer]);
   useEffect(() => save('candy_hero_text', heroText), [heroText]);
+  useEffect(() => save('candy_feature_blocks', featureBlocks), [featureBlocks]);
+  useEffect(() => save('candy_about', about), [about]);
 
   useEffect(() => {
     let active = true;
     (async () => {
       try {
-        const [cats, prods, arts, prms, hImgs, ftr, packs, prBanners, hText] = await Promise.all([
+        const [cats, prods, arts, prms, hImgs, ftr, packs, prBanners, hText, fBlocks, aboutDataApi] = await Promise.all([
           api.getCategories(),
           api.getProducts(),
           api.getArticles(),
@@ -143,11 +217,15 @@ export function useStore() {
           api.getPackagingOptions().catch(() => null),
           api.getPromoBanners().catch(() => null),
           api.getHeroText().catch(() => null),
+          api.getFeatureBlocks().catch(() => null),
+          api.getAbout().catch(() => null),
         ]);
         if (!active) return;
         if (Array.isArray(cats)) setCategories(cats as Category[]);
         if (Array.isArray(prods)) setProducts(prods as Product[]);
-        setArticles(arts as Article[]);
+        if (Array.isArray(arts)) {
+          setArticles(normalizeArticles(arts as Article[]));
+        }
         setPromos(prms as Promo[]);
         if (Array.isArray(hImgs) && hImgs.length) {
           setHeroImages(hImgs);
@@ -159,7 +237,13 @@ export function useStore() {
           setFooter(ftr as FooterData);
         }
         if (hText) {
-          setHeroText(hText as HeroTextData);
+          setHeroText(normalizeHeroText(hText));
+        }
+        if (Array.isArray(fBlocks) && fBlocks.length) {
+          setFeatureBlocks(fBlocks as FeatureBlock[]);
+        }
+        if (aboutDataApi) {
+          setAbout(normalizeAbout(aboutDataApi));
         }
         if (Array.isArray(packs)) {
           setPackagingOptions(packs as PackagingOption[]);
@@ -348,6 +432,8 @@ export function useStore() {
     setFavorites([]);
     setFooter(footerData);
     setHeroText(heroTextData);
+    setFeatureBlocks(defaultFeatureBlocks);
+    setAbout(aboutData);
   }, []);
 
   const addBadge = useCallback((b: Badge) => {
@@ -423,11 +509,25 @@ export function useStore() {
     if (apiReady) {
       await api.updateHeroText(data);
     }
-    setHeroText(data);
+    setHeroText(normalizeHeroText(data));
+  }, [apiReady]);
+
+  const updateFeatureBlocks = useCallback(async (blocks: FeatureBlock[]) => {
+    if (apiReady) {
+      await api.updateFeatureBlocks(blocks);
+    }
+    setFeatureBlocks(blocks);
+  }, [apiReady]);
+
+  const updateAbout = useCallback(async (data: AboutData) => {
+    if (apiReady) {
+      await api.updateAbout(data);
+    }
+    setAbout(normalizeAbout(data));
   }, [apiReady]);
 
   return {
-    products, categories, packagingOptions, articles, promos, heroImages, promoBanners, badges, orders, favorites, favoriteProducts, footer, heroText,
+    products, categories, packagingOptions, articles, promos, heroImages, promoBanners, badges, orders, favorites, favoriteProducts, footer, heroText, featureBlocks, about,
     addProduct, updateProduct, deleteProduct,
     addCategory, updateCategory, deleteCategory,
     addPackagingOption, updatePackagingOption, deletePackagingOption,
@@ -440,6 +540,8 @@ export function useStore() {
     toggleFavorite, isFavorite,
     updateFooter,
     updateHeroText,
+    updateFeatureBlocks,
+    updateAbout,
     resetToDefaults,
   };
 }

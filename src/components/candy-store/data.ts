@@ -101,7 +101,25 @@ export interface HeroTextData {
   title: string;
   accent: string;
   subtitle: string;
+  floatingCandiesEnabled: boolean;
+  floatingCandies: string[];
 }
+
+export interface AboutData {
+  title: string;
+  subtitle: string;
+  content: string;
+  images: string[];
+}
+
+export type FeatureBlock = {
+  id: string;
+  icon: string;
+  title: string;
+  description: string;
+  link: string;
+  bgColor: string;
+};
 
 export const footerData: FooterData = {
   brandEmoji: '🍬',
@@ -126,7 +144,51 @@ export const heroTextData: HeroTextData = {
   title: 'Сладкое счастье',
   accent: 'для детей',
   subtitle: 'Натуральные конфеты, шоколад и подарочные наборы — с любовью для самых маленьких сладкоежек',
+  floatingCandiesEnabled: true,
+  floatingCandies: ['🍭', '🍬', '🧁', '🍩', '🍪'],
 };
+
+export const aboutData: AboutData = {
+  title: 'О нас',
+  subtitle: 'Сладости, которые дарят радость и заботу',
+  content: 'МираВкус — это команда, которая превращает сладости в маленькие праздники. Мы выбираем ингредиенты с вниманием к составу и вкусу, чтобы наборы радовали детей и взрослых.\n\nКаждый подарок мы собираем вручную: подбираем гармоничные сочетания, проверяем свежесть и аккуратно упаковываем, чтобы впечатление было идеальным.\n\nНам важно, чтобы сладости были не только красивыми, но и честными по составу. Поэтому мы сотрудничаем с проверенными поставщиками и следим за качеством каждой партии.',
+  images: ['/images/hero-sweets.jpg', '/images/gift-box.jpg', '/images/cookies.jpg'],
+};
+
+export const featureBlocks: FeatureBlock[] = [
+  {
+    id: 'delivery',
+    icon: 'Truck',
+    title: 'Быстрая доставка',
+    description: 'От 1 дня по Москве',
+    link: '/articles/dostavka',
+    bgColor: 'bg-candy-pink',
+  },
+  {
+    id: 'natural',
+    icon: 'ShieldCheck',
+    title: 'Натуральный состав',
+    description: 'Без вредных добавок',
+    link: '/articles/naturalnyy-sostav',
+    bgColor: 'bg-candy-mint',
+  },
+  {
+    id: 'gift',
+    icon: 'Gift',
+    title: 'Подарочная упаковка',
+    description: 'Бесплатно к каждому набору',
+    link: '/articles/podarochnaya-upakovka',
+    bgColor: 'bg-candy-lavender',
+  },
+  {
+    id: 'love',
+    icon: 'Heart',
+    title: 'Сделано с любовью',
+    description: 'Ручная работа кондитеров',
+    link: '/articles/sdelano-s-lyubovyu',
+    bgColor: 'bg-candy-banana',
+  },
+];
 
 export const categories: Category[] = [
   { id: 'gift', name: 'Подарочные наборы', emoji: '🎁', color: 'candy-pink', group: 'set', showOnHome: true, homeOrder: 1 },
