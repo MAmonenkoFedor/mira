@@ -97,6 +97,13 @@ export interface FooterData {
   copyright: string;
 }
 
+export interface HeaderData {
+  brandName: string;
+  brandTextColor: string;
+  menuButtonBg: string;
+  menuButtonTextColor: string;
+}
+
 export interface HeroTextData {
   title: string;
   accent: string;
@@ -146,6 +153,13 @@ export const heroTextData: HeroTextData = {
   subtitle: 'Натуральные конфеты, шоколад и подарочные наборы — с любовью для самых маленьких сладкоежек',
   floatingCandiesEnabled: true,
   floatingCandies: ['🍭', '🍬', '🧁', '🍩', '🍪'],
+};
+
+export const headerData: HeaderData = {
+  brandName: 'МираВкус',
+  brandTextColor: '#db2777',
+  menuButtonBg: '#db2777',
+  menuButtonTextColor: '#ffffff',
 };
 
 export const aboutData: AboutData = {

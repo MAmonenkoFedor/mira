@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { api } from '@/lib/api';
 import { getToken } from '@/lib/auth';
-import { products as defaultProducts, categories as defaultCategories, badges as defaultBadges, packagingOptions as defaultPackagingOptions, footerData, heroTextData, featureBlocks as defaultFeatureBlocks, aboutData, type FeatureBlock, type FooterData, type HeroTextData, type AboutData, type Product, type Category, type Promo, type Badge, type PackagingOption, type PromoBanner } from './data';
+import { products as defaultProducts, categories as defaultCategories, badges as defaultBadges, packagingOptions as defaultPackagingOptions, footerData, heroTextData, featureBlocks as defaultFeatureBlocks, aboutData, headerData, type FeatureBlock, type FooterData, type HeroTextData, type AboutData, type HeaderData, type Product, type Category, type Promo, type Badge, type PackagingOption, type PromoBanner } from './data';
 
 export interface Article {
   id: number;
@@ -130,6 +130,16 @@ const normalizeAbout = (input: unknown): AboutData => {
   };
 };
 
+const normalizeHeader = (input: unknown): HeaderData => {
+  const data = input && typeof input === 'object' ? (input as Partial<HeaderData>) : {};
+  return {
+    brandName: typeof data.brandName === 'string' && data.brandName.trim() ? data.brandName.trim() : headerData.brandName,
+    brandTextColor: typeof data.brandTextColor === 'string' && data.brandTextColor.trim() ? data.brandTextColor.trim() : headerData.brandTextColor,
+    menuButtonBg: typeof data.menuButtonBg === 'string' && data.menuButtonBg.trim() ? data.menuButtonBg.trim() : headerData.menuButtonBg,
+    menuButtonTextColor: typeof data.menuButtonTextColor === 'string' && data.menuButtonTextColor.trim() ? data.menuButtonTextColor.trim() : headerData.menuButtonTextColor,
+  };
+};
+
 function load<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
@@ -183,6 +193,7 @@ export function useStore() {
     return Array.isArray(loaded) ? loaded.map((v: unknown) => Number(v)).filter(v => Number.isFinite(v)) : [];
   });
   const [footer, setFooter] = useState<FooterData>(() => load('candy_footer', footerData));
+  const [header, setHeader] = useState<HeaderData>(() => normalizeHeader(load('candy_header', headerData)));
   const [heroText, setHeroText] = useState<HeroTextData>(() => normalizeHeroText(load('candy_hero_text', heroTextData)));
   const [featureBlocks, setFeatureBlocks] = useState<FeatureBlock[]>(() => load('candy_feature_blocks', defaultFeatureBlocks));
   const [about, setAbout] = useState<AboutData>(() => normalizeAbout(load('candy_about', aboutData)));
@@ -199,6 +210,7 @@ export function useStore() {
   useEffect(() => save('candy_orders', orders), [orders]);
   useEffect(() => save('candy_favorites', favorites), [favorites]);
   useEffect(() => save('candy_footer', footer), [footer]);
+  useEffect(() => save('candy_header', header), [header]);
   useEffect(() => save('candy_hero_text', heroText), [heroText]);
   useEffect(() => save('candy_feature_blocks', featureBlocks), [featureBlocks]);
   useEffect(() => save('candy_about', about), [about]);
@@ -207,13 +219,14 @@ export function useStore() {
     let active = true;
     (async () => {
       try {
-        const [cats, prods, arts, prms, hImgs, ftr, packs, prBanners, hText, fBlocks, aboutDataApi] = await Promise.all([
-          api.getCategories(),
+        const cats = await api.getCategories();
+        const [prods, arts, prms, hImgs, ftr, hdr, packs, prBanners, hText, fBlocks, aboutDataApi] = await Promise.all([
           api.getProducts(),
           api.getArticles(),
           api.getPromos().catch(() => []),
           api.getHeroImages().catch(() => null),
           api.getFooter().catch(() => null),
+          api.getHeader().catch(() => null),
           api.getPackagingOptions().catch(() => null),
           api.getPromoBanners().catch(() => null),
           api.getHeroText().catch(() => null),
@@ -235,6 +248,9 @@ export function useStore() {
         }
         if (ftr) {
           setFooter(ftr as FooterData);
+        }
+        if (hdr) {
+          setHeader(normalizeHeader(hdr));
         }
         if (hText) {
           setHeroText(normalizeHeroText(hText));
@@ -431,6 +447,7 @@ export function useStore() {
     setOrders([]);
     setFavorites([]);
     setFooter(footerData);
+    setHeader(headerData);
     setHeroText(heroTextData);
     setFeatureBlocks(defaultFeatureBlocks);
     setAbout(aboutData);
@@ -505,6 +522,15 @@ export function useStore() {
     setFooter(data);
   }, [apiReady]);
 
+  const updateHeader = useCallback(async (data: HeaderData) => {
+    if (apiReady) {
+      try {
+        await api.updateHeader(data);
+      } catch {}
+    }
+    setHeader(normalizeHeader(data));
+  }, [apiReady]);
+
   const updateHeroText = useCallback(async (data: HeroTextData) => {
     if (apiReady) {
       await api.updateHeroText(data);
@@ -527,7 +553,7 @@ export function useStore() {
   }, [apiReady]);
 
   return {
-    products, categories, packagingOptions, articles, promos, heroImages, promoBanners, badges, orders, favorites, favoriteProducts, footer, heroText, featureBlocks, about,
+    products, categories, packagingOptions, articles, promos, heroImages, promoBanners, badges, orders, favorites, favoriteProducts, footer, header, heroText, featureBlocks, about,
     addProduct, updateProduct, deleteProduct,
     addCategory, updateCategory, deleteCategory,
     addPackagingOption, updatePackagingOption, deletePackagingOption,
@@ -539,6 +565,7 @@ export function useStore() {
     updateOrder,
     toggleFavorite, isFavorite,
     updateFooter,
+    updateHeader,
     updateHeroText,
     updateFeatureBlocks,
     updateAbout,

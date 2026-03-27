@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { footerData, heroTextData, type FeatureBlock } from '@/components/candy-store/data';
+import { footerData, heroTextData, headerData, type FeatureBlock } from '@/components/candy-store/data';
 import { useStore } from '@/components/candy-store/useStore';
 
 const { apiMock } = vi.hoisted(() => ({
@@ -11,6 +11,7 @@ const { apiMock } = vi.hoisted(() => ({
     getPromos: vi.fn(),
     getHeroImages: vi.fn(),
     getFooter: vi.fn(),
+    getHeader: vi.fn(),
     getPackagingOptions: vi.fn(),
     getPromoBanners: vi.fn(),
     getHeroText: vi.fn(),
@@ -39,6 +40,7 @@ const { apiMock } = vi.hoisted(() => ({
     deletePromoBanner: vi.fn(),
     updateOrder: vi.fn(),
     updateFooter: vi.fn(),
+    updateHeader: vi.fn(),
     updateHeroText: vi.fn(),
     updateFeatureBlocks: vi.fn(),
     updateAbout: vi.fn(),
@@ -63,6 +65,7 @@ describe('admin crud', () => {
     apiMock.getPromos.mockRejectedValue(new Error('offline'));
     apiMock.getHeroImages.mockRejectedValue(new Error('offline'));
     apiMock.getFooter.mockRejectedValue(new Error('offline'));
+    apiMock.getHeader.mockRejectedValue(new Error('offline'));
     apiMock.getPackagingOptions.mockRejectedValue(new Error('offline'));
     apiMock.getPromoBanners.mockRejectedValue(new Error('offline'));
     apiMock.getHeroText.mockRejectedValue(new Error('offline'));
@@ -270,6 +273,7 @@ describe('admin crud', () => {
 
     const { result } = renderHook(() => useStore());
     const nextFooter = { ...footerData, brandName: 'QA Brand' };
+    const nextHeader = { ...headerData, brandName: 'QA Header', menuButtonBg: '#111111' };
     const nextHero = { ...heroTextData, title: 'QA Hero' };
     const nextBlocks: FeatureBlock[] = [
       { id: 'qa', icon: 'Truck', title: 'QA', description: 'QA Desc', link: '/qa', bgColor: 'bg-candy-pink' },
@@ -278,6 +282,7 @@ describe('admin crud', () => {
 
     await act(async () => {
       await result.current.updateFooter(nextFooter);
+      await result.current.updateHeader(nextHeader);
       await result.current.updateHeroText(nextHero);
       await result.current.updateFeatureBlocks(nextBlocks);
       await result.current.updateAbout(nextAbout);
@@ -286,6 +291,7 @@ describe('admin crud', () => {
 
     await waitFor(() => {
       expect(result.current.footer.brandName).toBe('QA Brand');
+      expect(result.current.header.brandName).toBe('QA Header');
       expect(result.current.heroText.title).toBe('QA Hero');
       expect(result.current.featureBlocks[0]?.id).toBe('qa');
       expect(result.current.about.title).toBe('О нас QA');

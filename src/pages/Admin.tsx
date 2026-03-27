@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, Package, FileText, Tag, Gift, Upload, X, Percent, Image as ImageIcon, ArrowUp, ArrowDown, BadgeCheck, ClipboardList, Star, Heart } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, Package, FileText, Tag, Gift, Upload, X, Percent, Image as ImageIcon, ArrowUp, ArrowDown, BadgeCheck, ClipboardList, Star, Heart, Menu } from 'lucide-react';
 import { toast } from 'sonner';
 import { useStore, type Article, type Order } from '@/components/candy-store/useStore';
 import { api, resolveMediaUrl } from '@/lib/api';
 import { badgeToneSoftClasses, badgeToneClasses } from '@/components/candy-store/data';
 import type { Product, Category, Promo, PromoScope, Badge, BadgeTone, PackagingOption, Review, FeatureBlock } from '@/components/candy-store/data';
 
-type Tab = 'products' | 'categories' | 'packaging' | 'articles' | 'promos' | 'actions' | 'import' | 'hero' | 'badges' | 'orders' | 'footer' | 'reviews' | 'benefits' | 'about';
+type Tab = 'products' | 'categories' | 'packaging' | 'articles' | 'promos' | 'import' | 'hero' | 'badges' | 'orders' | 'header' | 'footer' | 'reviews' | 'benefits' | 'about';
 
 const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader();
@@ -31,6 +31,13 @@ const toWebpDataUrl = (dataUrl: string) => new Promise<string>((resolve, reject)
   img.onerror = () => reject(new Error('image_error'));
   img.src = dataUrl;
 });
+
+const headerFallback = {
+  brandName: 'МираВкус',
+  brandTextColor: '#db2777',
+  menuButtonBg: '#db2777',
+  menuButtonTextColor: '#ffffff',
+};
 
 /* ─── Image Upload Helper ─── */
 function ImageUpload({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -181,8 +188,8 @@ export default function Admin() {
     { key: 'reviews', icon: Star, label: 'Отзывы', count: 0 },
     { key: 'orders', icon: ClipboardList, label: 'Заказы', count: store.orders?.length || 0 },
     { key: 'promos', icon: Percent, label: 'Промокоды', count: store.promos?.length || 0 },
-    { key: 'actions', icon: ImageIcon, label: 'Акции', count: store.promoBanners?.length || 0 },
     { key: 'hero', icon: ImageIcon, label: 'Баннер', count: store.heroImages?.length || 0 },
+    { key: 'header', icon: Menu, label: 'Хедер', count: 1 },
     { key: 'benefits', icon: Heart, label: 'Преимущества', count: store.featureBlocks?.length || 0 },
     { key: 'about', icon: FileText, label: 'О нас', count: 1 },
     { key: 'footer', icon: ImageIcon, label: 'Футер', count: 0 },
@@ -305,9 +312,9 @@ export default function Admin() {
               {tab === 'reviews' && <ReviewsTab store={store} />}
               {tab === 'orders' && <OrdersTab store={store} />}
               {tab === 'promos' && <PromosTab store={store} />}
-              {tab === 'actions' && <PromoBannersTab store={store} />}
               {tab === 'import' && <ImportTab store={store} />}
               {tab === 'hero' && <HeroTab store={store} />}
+              {tab === 'header' && <HeaderTab store={store} />}
               {tab === 'benefits' && <FeatureBlocksTab store={store} />}
               {tab === 'about' && <AboutTab store={store} />}
               {tab === 'footer' && <FooterTab store={store} />}
@@ -2436,9 +2443,16 @@ function BadgeForm({ badge, toneOptions, onSave, onCancel }: {
 function PromosTab({ store }: { store: ReturnType<typeof useStore> }) {
   const [editing, setEditing] = useState<Promo | null>(null);
   const [creating, setCreating] = useState(false);
+  const activeCount = store.promos?.filter(p => p.active).length || 0;
 
   return (
     <div>
+      <div className="mb-4 rounded-2xl border border-border/40 bg-card p-4 text-sm">
+        <div className="font-medium">Промокоды вместо акций</div>
+        <div className="text-muted-foreground mt-1">
+          Сейчас блок на главной использует активные промокоды автоматически. Активно: {activeCount}.
+        </div>
+      </div>
       <button onClick={() => { setCreating(true); setEditing(null); }}
         className="mb-4 flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-primary text-primary-foreground text-sm font-medium hover:scale-[1.02] active:scale-95 transition-transform">
         <Plus size={16} /> Добавить промокод
@@ -2958,6 +2972,101 @@ function FeatureBlocksTab({ store }: { store: ReturnType<typeof useStore> }) {
         </button>
       </div>
     </div>
+  );
+}
+
+function HeaderTab({ store }: { store: ReturnType<typeof useStore> }) {
+  const [form, setForm] = useState(() => ({
+    brandName: store.header?.brandName || headerFallback.brandName,
+    brandTextColor: store.header?.brandTextColor || headerFallback.brandTextColor,
+    menuButtonBg: store.header?.menuButtonBg || headerFallback.menuButtonBg,
+    menuButtonTextColor: store.header?.menuButtonTextColor || headerFallback.menuButtonTextColor,
+  }));
+
+  useEffect(() => {
+    setForm({
+      brandName: store.header?.brandName || headerFallback.brandName,
+      brandTextColor: store.header?.brandTextColor || headerFallback.brandTextColor,
+      menuButtonBg: store.header?.menuButtonBg || headerFallback.menuButtonBg,
+      menuButtonTextColor: store.header?.menuButtonTextColor || headerFallback.menuButtonTextColor,
+    });
+  }, [store.header]);
+
+  const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm(f => ({ ...f, [k]: v }));
+  const isHex = (v: string) => /^#([a-fA-F0-9]{6}|[a-fA-F0-9]{3})$/.test(v.trim());
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.brandName.trim()) { toast.error('Введите название в хедере'); return; }
+    if (!isHex(form.brandTextColor)) { toast.error('Цвет текста возле лого должен быть HEX'); return; }
+    if (!isHex(form.menuButtonBg)) { toast.error('Цвет кнопки должен быть HEX'); return; }
+    if (!isHex(form.menuButtonTextColor)) { toast.error('Цвет текста кнопки должен быть HEX'); return; }
+    try {
+      await store.updateHeader({
+        brandName: form.brandName.trim(),
+        brandTextColor: form.brandTextColor.trim(),
+        menuButtonBg: form.menuButtonBg.trim(),
+        menuButtonTextColor: form.menuButtonTextColor.trim(),
+      });
+      toast.success('Хедер обновлён');
+    } catch (err) {
+      const code = err instanceof Error ? err.message : '';
+      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+      else toast.error('Не удалось обновить хедер');
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-card rounded-2xl p-5 border border-border/40 shadow-sm grid gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Название возле лого</label>
+          <input value={form.brandName} onChange={e => set('brandName', e.target.value)} maxLength={60}
+            className="admin-input" placeholder="МираВкус" />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Цвет текста возле лого (HEX)</label>
+          <div className="flex items-center gap-2">
+            <input type="color" value={isHex(form.brandTextColor) ? form.brandTextColor : headerFallback.brandTextColor}
+              onChange={e => set('brandTextColor', e.target.value)} className="h-10 w-12 rounded-lg border border-border bg-transparent p-1" />
+            <input value={form.brandTextColor} onChange={e => set('brandTextColor', e.target.value)} className="admin-input" placeholder="#db2777" />
+          </div>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Цвет кнопки «Меню» (HEX)</label>
+          <div className="flex items-center gap-2">
+            <input type="color" value={isHex(form.menuButtonBg) ? form.menuButtonBg : headerFallback.menuButtonBg}
+              onChange={e => set('menuButtonBg', e.target.value)} className="h-10 w-12 rounded-lg border border-border bg-transparent p-1" />
+            <input value={form.menuButtonBg} onChange={e => set('menuButtonBg', e.target.value)} className="admin-input" placeholder="#db2777" />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Цвет текста кнопки (HEX)</label>
+          <div className="flex items-center gap-2">
+            <input type="color" value={isHex(form.menuButtonTextColor) ? form.menuButtonTextColor : headerFallback.menuButtonTextColor}
+              onChange={e => set('menuButtonTextColor', e.target.value)} className="h-10 w-12 rounded-lg border border-border bg-transparent p-1" />
+            <input value={form.menuButtonTextColor} onChange={e => set('menuButtonTextColor', e.target.value)} className="admin-input" placeholder="#ffffff" />
+          </div>
+        </div>
+      </div>
+      <div className="rounded-2xl border border-border/40 p-4 bg-muted/20">
+        <div className="text-xs text-muted-foreground mb-2">Предпросмотр</div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="font-display font-bold text-lg" style={{ color: form.brandTextColor }}>{form.brandName || 'МираВкус'}</span>
+          <button type="button" className="px-4 py-2 rounded-2xl text-sm font-medium" style={{ backgroundColor: form.menuButtonBg, color: form.menuButtonTextColor }}>
+            Меню
+          </button>
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <button type="submit"
+          className="px-4 py-2 rounded-xl text-sm bg-primary text-primary-foreground font-medium hover:scale-[1.02] active:scale-95 transition-transform">
+          Сохранить
+        </button>
+      </div>
+    </form>
   );
 }
 

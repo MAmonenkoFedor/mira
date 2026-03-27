@@ -32,9 +32,9 @@ export default function Articles() {
         ) : (
           <div className={scrollClass}>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {ordered.map(a => (
+              {ordered.map((a, index) => (
               <Link
-                key={a.id}
+                key={a.slug || `article-${a.id}-${index}`}
                 to={`/articles/${a.slug}`}
                 aria-label={a.title}
                 className="reveal bg-card rounded-3xl overflow-hidden shadow-soft border border-border/40 hover:shadow-md transition-shadow duration-300 flex flex-col"

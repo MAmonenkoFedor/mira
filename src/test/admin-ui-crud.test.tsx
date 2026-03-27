@@ -56,6 +56,12 @@ const storeMock = {
     socialItems: ['Telegram'],
     copyright: '© Тест',
   },
+  header: {
+    brandName: 'МираВкус',
+    brandTextColor: '#db2777',
+    menuButtonBg: '#db2777',
+    menuButtonTextColor: '#ffffff',
+  },
   addProduct: vi.fn().mockResolvedValue(undefined),
   updateProduct: vi.fn().mockResolvedValue(undefined),
   deleteProduct: vi.fn().mockResolvedValue(undefined),
@@ -74,6 +80,7 @@ const storeMock = {
   updateFeatureBlocks: vi.fn().mockResolvedValue(undefined),
   updateAbout: vi.fn().mockResolvedValue(undefined),
   updateFooter: vi.fn().mockResolvedValue(undefined),
+  updateHeader: vi.fn().mockResolvedValue(undefined),
   resetToDefaults: vi.fn(),
 };
 
@@ -206,5 +213,9 @@ describe('admin ui crud wiring', () => {
     clickTab('Футер');
     fireEvent.click(screen.getByRole('button', { name: /сохранить/i }));
     expect(storeMock.updateFooter).toHaveBeenCalledTimes(1);
+
+    clickTab('Хедер');
+    fireEvent.click(screen.getByRole('button', { name: /сохранить/i }));
+    expect(storeMock.updateHeader).toHaveBeenCalledTimes(1);
   });
 });

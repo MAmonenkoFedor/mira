@@ -26,7 +26,13 @@ export default function Header({ cartCount, onCartClick }: HeaderProps) {
   const mobileSearchRef = useRef<HTMLInputElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
-  const { categories, products, badges } = useStore();
+  const { categories, products, badges, header } = useStore();
+  const headerView = header ?? {
+    brandName: 'МираВкус',
+    brandTextColor: '#db2777',
+    menuButtonBg: '#db2777',
+    menuButtonTextColor: '#ffffff',
+  };
   const logoCandidates = useMemo(
     () => ['/logo.png', '/logo.webp', '/logo.svg', '/images/logo.png', '/images/logo.webp', '/images/logo.svg'],
     []
@@ -106,7 +112,7 @@ export default function Header({ cartCount, onCartClick }: HeaderProps) {
   return (
     <header className="sticky top-0 z-50 bg-card/90 backdrop-blur-md border-b border-border/60 shadow-sm">
       <div className="container flex items-center gap-4 h-16 md:h-18">
-        <Link to="/" className="font-display text-xl md:text-2xl font-bold text-primary flex items-center gap-2 shrink-0">
+        <Link to="/" className="font-display text-xl md:text-2xl font-bold flex items-center gap-2 shrink-0">
           {!logoFailed ? (
             <img
               src={logoSrc}
@@ -122,7 +128,7 @@ export default function Header({ cartCount, onCartClick }: HeaderProps) {
           ) : (
             <span className="text-2xl">🍬</span>
           )}
-          <span>МираВкус</span>
+          <span style={{ color: headerView.brandTextColor }}>{headerView.brandName}</span>
         </Link>
 
         <div className="hidden md:flex items-center gap-3 flex-1">
@@ -130,7 +136,8 @@ export default function Header({ cartCount, onCartClick }: HeaderProps) {
             <button
               type="button"
               onClick={() => setCatalogOpen(v => !v)}
-              className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-primary text-primary-foreground font-display font-medium text-sm hover:scale-[1.02] active:scale-95 transition-transform"
+              className="flex items-center gap-2 px-4 py-2 rounded-2xl font-display font-medium text-sm hover:scale-[1.02] active:scale-95 transition-transform"
+              style={{ backgroundColor: headerView.menuButtonBg, color: headerView.menuButtonTextColor }}
               aria-expanded={catalogOpen}
               aria-haspopup="menu"
             >

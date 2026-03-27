@@ -112,9 +112,9 @@ const Index = () => {
     });
   }, []);
 
-  const handlePromoApply = useCallback(() => {
-    cart.applyPromo('SWEET15');
-    toast.success('Промокод SWEET15 применён!');
+  const handlePromoApply = useCallback((code: string) => {
+    cart.applyPromo(code);
+    toast.success(`Промокод ${code.toUpperCase()} применён!`);
     navigate('/cart');
   }, [cart, navigate]);
 

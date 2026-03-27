@@ -17,9 +17,13 @@ const base = resolveBase();
 
 export function resolveMediaUrl(url?: string | null) {
   if (!url) return "";
-  if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) return url;
-  if (url.startsWith("/uploads/")) return base ? `${base}${url}` : url;
-  return url;
+  const normalized = String(url).trim().replace(/\\/g, "/");
+  if (!normalized) return "";
+  if (normalized.startsWith("http://") || normalized.startsWith("https://") || normalized.startsWith("data:")) return normalized;
+  const withLeadingSlash = normalized.startsWith("/") ? normalized : `/${normalized}`;
+  if (withLeadingSlash.startsWith("/uploads/")) return base ? `${base}${withLeadingSlash}` : withLeadingSlash;
+  if (withLeadingSlash.startsWith("/images/")) return withLeadingSlash;
+  return withLeadingSlash;
 }
 
 async function j<T>(res: Response | Promise<Response>): Promise<T> {
@@ -111,6 +115,12 @@ export const api = {
   },
   async updateFooter(p: any) {
     return j(fetch(`${base}/api/footer`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+  },
+  async getHeader() {
+    return j(fetch(`${base}/api/header`));
+  },
+  async updateHeader(p: any) {
+    return j(fetch(`${base}/api/header`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
   },
   async getAbout() {
     return j(fetch(`${base}/api/about`));
