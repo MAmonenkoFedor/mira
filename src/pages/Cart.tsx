@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Minus, Plus, Tag, Trash2 } from 'lucide-react';
 import Header from '@/components/candy-store/Header';
@@ -32,6 +32,41 @@ export default function Cart() {
     setPromoError(!ok);
     if (ok) setPromoInput('');
   };
+
+  useEffect(() => {
+    const setMeta = (attr: 'name' | 'property', key: string, content: string) => {
+      let el = document.querySelector(`meta[${attr}="${key}"]`) as HTMLMetaElement | null;
+      if (!el) {
+        el = document.createElement('meta');
+        el.setAttribute(attr, key);
+        document.head.appendChild(el);
+      }
+      el.content = content;
+    };
+    const setLink = (rel: string, href: string) => {
+      let el = document.querySelector(`link[rel="${rel}"]`) as HTMLLinkElement | null;
+      if (!el) {
+        el = document.createElement('link');
+        el.rel = rel;
+        document.head.appendChild(el);
+      }
+      el.href = href;
+    };
+    const title = 'Корзина — МираВкус';
+    const description = 'Корзина заказа МираВкус: проверка товаров, промокодов и оформление доставки.';
+    const url = `${window.location.origin}/cart`;
+    document.title = title;
+    setMeta('name', 'description', description);
+    setMeta('name', 'robots', 'noindex, nofollow');
+    setMeta('property', 'og:title', title);
+    setMeta('property', 'og:description', description);
+    setMeta('property', 'og:type', 'website');
+    setMeta('property', 'og:url', url);
+    setMeta('name', 'twitter:card', 'summary');
+    setMeta('name', 'twitter:title', title);
+    setMeta('name', 'twitter:description', description);
+    setLink('canonical', url);
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
