@@ -2069,6 +2069,10 @@ function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<'pending' | 'approved' | 'all'>('pending');
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [editingPhotoId, setEditingPhotoId] = useState<number | null>(null);
+  const [editingPhotoValue, setEditingPhotoValue] = useState('');
+  const [editingReviewId, setEditingReviewId] = useState<number | null>(null);
+  const [editingReviewForm, setEditingReviewForm] = useState({ authorName: '', rating: 5, text: '' });
   const productsSorted = useMemo(() => {
     return [...store.products].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
   }, [store.products]);
@@ -2261,6 +2265,81 @@ function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
                 </div>
               </div>
               <div className="text-sm text-foreground/80 whitespace-pre-wrap">«{r.text}»</div>
+              {editingReviewId === r.id && (
+                <div className="grid gap-2">
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    <input
+                      value={editingReviewForm.authorName}
+                      onChange={e => setEditingReviewForm(prev => ({ ...prev, authorName: e.target.value }))}
+                      className="admin-input"
+                      placeholder="Имя автора"
+                    />
+                    <select
+                      value={editingReviewForm.rating}
+                      onChange={e => setEditingReviewForm(prev => ({ ...prev, rating: Number(e.target.value) }))}
+                      className="admin-input"
+                    >
+                      {[5, 4, 3, 2, 1].map(v => (
+                        <option key={v} value={v}>{v} / 5</option>
+                      ))}
+                    </select>
+                  </div>
+                  <textarea
+                    value={editingReviewForm.text}
+                    onChange={e => setEditingReviewForm(prev => ({ ...prev, text: e.target.value }))}
+                    rows={3}
+                    className="admin-input resize-none"
+                    placeholder="Текст отзыва"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={busyId === r.id}
+                      onClick={async () => {
+                        if (!editingReviewForm.authorName.trim()) { toast.error('Введите имя'); return; }
+                        if (!editingReviewForm.text.trim()) { toast.error('Введите текст отзыва'); return; }
+                        try {
+                          setBusyId(r.id);
+                          await api.updateReview(r.id, {
+                            authorName: editingReviewForm.authorName.trim(),
+                            rating: Number(editingReviewForm.rating) || 5,
+                            text: editingReviewForm.text.trim(),
+                          });
+                          setReviews(prev => prev.map(x => (
+                            x.id === r.id
+                              ? {
+                                ...x,
+                                authorName: editingReviewForm.authorName.trim(),
+                                rating: Number(editingReviewForm.rating) || 5,
+                                text: editingReviewForm.text.trim(),
+                              }
+                              : x
+                          )));
+                          setEditingReviewId(null);
+                          toast.success('Отзыв обновлён');
+                        } catch (err) {
+                          const code = err instanceof Error ? err.message : '';
+                          if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                          else toast.error('Не удалось обновить отзыв');
+                        } finally {
+                          setBusyId(null);
+                        }
+                      }}
+                      className="px-3 py-2 rounded-xl text-xs bg-primary text-primary-foreground disabled:opacity-50"
+                    >
+                      Сохранить отзыв
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyId === r.id}
+                      onClick={() => setEditingReviewId(null)}
+                      className="px-3 py-2 rounded-xl text-xs border border-border text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                    >
+                      Отмена
+                    </button>
+                  </div>
+                </div>
+              )}
               {r.image && (
                 <img
                   src={resolveMediaUrl(r.image)}
@@ -2269,7 +2348,91 @@ function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
                   loading="lazy"
                 />
               )}
+              {editingPhotoId === r.id && (
+                <div className="grid gap-2 max-w-sm">
+                  <ImageUpload value={editingPhotoValue} onChange={setEditingPhotoValue} />
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={busyId === r.id}
+                      onClick={async () => {
+                        try {
+                          setBusyId(r.id);
+                          let nextImage = editingPhotoValue.trim();
+                          if (nextImage.startsWith('data:image/')) {
+                            const uploaded = await api.uploadReviewImage(nextImage) as { url?: unknown };
+                            nextImage = typeof uploaded?.url === 'string' ? uploaded.url : '';
+                          }
+                          const payload = nextImage ? { image: nextImage } : { image: null };
+                          await api.updateReview(r.id, payload);
+                          setReviews(prev => prev.map(x => x.id === r.id ? { ...x, image: nextImage || undefined } : x));
+                          setEditingPhotoId(null);
+                          setEditingPhotoValue('');
+                          toast.success(nextImage ? 'Фото обновлено' : 'Фото удалено');
+                        } catch (err) {
+                          const code = err instanceof Error ? err.message : '';
+                          if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                          else toast.error('Не удалось сохранить фото');
+                        } finally {
+                          setBusyId(null);
+                        }
+                      }}
+                      className="px-3 py-2 rounded-xl text-xs bg-primary text-primary-foreground disabled:opacity-50"
+                    >
+                      Сохранить фото
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyId === r.id}
+                      onClick={() => setEditingPhotoValue('')}
+                      className="px-3 py-2 rounded-xl text-xs border border-border text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                    >
+                      Удалить фото
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyId === r.id}
+                      onClick={() => {
+                        setEditingPhotoId(null);
+                        setEditingPhotoValue('');
+                      }}
+                      className="px-3 py-2 rounded-xl text-xs border border-border text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                    >
+                      Отмена
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="flex flex-wrap gap-2 justify-end">
+                <button
+                  type="button"
+                  disabled={busyId === r.id}
+                  onClick={() => {
+                    setEditingReviewId(null);
+                    setEditingPhotoId(r.id);
+                    setEditingPhotoValue(r.image || '');
+                  }}
+                  className="px-3 py-2 rounded-xl text-xs border border-border text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                >
+                  {r.image ? 'Редактировать фото' : 'Добавить фото'}
+                </button>
+                <button
+                  type="button"
+                  disabled={busyId === r.id}
+                  onClick={() => {
+                    setEditingPhotoId(null);
+                    setEditingPhotoValue('');
+                    setEditingReviewId(r.id);
+                    setEditingReviewForm({
+                      authorName: r.authorName || '',
+                      rating: Number(r.rating) || 5,
+                      text: r.text || '',
+                    });
+                  }}
+                  className="px-3 py-2 rounded-xl text-xs border border-border text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                >
+                  Редактировать отзыв
+                </button>
                 <button
                   type="button"
                   disabled={busyId === r.id}
