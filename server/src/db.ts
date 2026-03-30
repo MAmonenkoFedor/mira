@@ -47,10 +47,12 @@ export async function migrate(pool: Pool) {
       author_name text not null,
       rating integer not null check (rating >= 1 and rating <= 5),
       text text not null,
+      image text,
       approved boolean not null default false,
       created_at timestamptz not null default now()
     );
   `);
+  await pool.query(`alter table reviews add column if not exists image text`);
   await pool.query(`alter table products add column if not exists active boolean not null default true`);
   await pool.query(`alter table products add column if not exists images text[]`);
   await pool.query(`alter table products add column if not exists video_url text`);

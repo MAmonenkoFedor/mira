@@ -527,6 +527,14 @@ export default function ProductPage() {
                   <Stars count={r.rating} />
                 </div>
                 <div className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">«{r.text}»</div>
+                {r.image && (
+                  <img
+                    src={resolveMediaUrl(r.image)}
+                    alt=""
+                    className="w-full max-w-sm h-44 rounded-2xl object-cover border border-border/40"
+                    loading="lazy"
+                  />
+                )}
               </div>
             ))}
             {reviews.length === 0 && (

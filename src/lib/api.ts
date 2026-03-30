@@ -174,6 +174,9 @@ export const api = {
   async uploadArticleVideo(dataUrl: string) {
     return j(fetch(`${base}/api/articles/upload-video`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) })));
   },
+  async uploadReviewImage(dataUrl: string) {
+    return j(fetch(`${base}/api/reviews/upload`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) })));
+  },
   async deleteProduct(id: number) {
     return j(fetch(`${base}/api/products/${id}`, withAuth({ method: "DELETE" })));
   },

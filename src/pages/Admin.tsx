@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, Package, FileText, Tag, Gift, Upload, X, Percent, Image as ImageIcon, ArrowUp, ArrowDown, BadgeCheck, ClipboardList, Star, Heart, Menu } from 'lucide-react';
 import { toast } from 'sonner';
@@ -365,11 +365,28 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
   const [sort, setSort] = useState<'popular' | 'name' | 'price_asc' | 'price_desc'>('popular');
   const [showInactive, setShowInactive] = useState(false);
   const [page, setPage] = useState(1);
+  const [showQuickNav, setShowQuickNav] = useState(false);
+  const filtersRef = useRef<HTMLDivElement | null>(null);
   const pageSize = 20;
 
-  const categoriesSorted = useMemo(() => {
-    return [...store.categories].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  const categoriesById = useMemo(() => {
+    return new Map(store.categories.map(c => [c.id, c]));
   }, [store.categories]);
+  const getCategoryPathLabel = useCallback((id: string) => {
+    const parts = id.split('/').filter(Boolean);
+    if (!parts.length) return id;
+    const names: string[] = [];
+    for (let i = 0; i < parts.length; i += 1) {
+      const partialId = parts.slice(0, i + 1).join('/');
+      names.push(categoriesById.get(partialId)?.name || parts[i]);
+    }
+    return names.join(' / ');
+  }, [categoriesById]);
+  const categoriesSorted = useMemo(() => {
+    return [...store.categories]
+      .map(c => ({ ...c, depth: c.id.split('/').length - 1, pathLabel: getCategoryPathLabel(c.id) }))
+      .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'ru'));
+  }, [store.categories, getCategoryPathLabel]);
 
   const getCategories = (p: Product) => {
     const anyP = p as any;
@@ -425,12 +442,18 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
   useEffect(() => {
     setPage(1);
   }, [search, categoryFilter, badgeFilter, sort, showInactive, store.products.length]);
+  useEffect(() => {
+    const onScroll = () => setShowQuickNav(window.scrollY > 700);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   const visible = filtered.slice(0, page * pageSize);
 
   return (
     <div>
-      <div className="sticky top-16 z-20 mb-4 bg-muted/30 backdrop-blur-md rounded-2xl px-4 py-3 border border-border/40 shadow-sm">
+      <div ref={filtersRef} className="sticky top-16 z-20 mb-4 bg-muted/30 backdrop-blur-md rounded-2xl px-4 py-3 border border-border/40 shadow-sm">
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex-1 min-w-[220px]">
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Поиск</label>
@@ -441,7 +464,9 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
             <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="admin-input">
               <option value="all">Все</option>
               {categoriesSorted.map(c => (
-                <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>
+                <option key={c.id} value={c.id}>
+                  {`${'— '.repeat(c.depth)}${c.emoji ? `${c.emoji} ` : ''}${c.pathLabel}`}
+                </option>
               ))}
             </select>
           </div>
@@ -532,9 +557,10 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
               <div className="text-xs text-muted-foreground">
                 {(() => {
                   const list = getCategories(p);
-                  const primary = list[0] ?? '';
-                  const label = primary ? (store.categories.find(c => c.id === primary)?.name || primary) : '—';
-                  return `${p.price} ₽ · ${label} · id: ${p.id}${p.sku ? ` · ${p.sku}` : ''}`;
+                  const labels = list.map(getCategoryPathLabel);
+                  const shown = labels.slice(0, 2).join(', ');
+                  const more = labels.length > 2 ? ` +${labels.length - 2}` : '';
+                  return `${p.price} ₽ · ${shown || '—'}${more} · id: ${p.id}${p.sku ? ` · ${p.sku}` : ''}`;
                 })()}
               </div>
             </div>
@@ -569,6 +595,24 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
           <button onClick={() => setPage(p => p + 1)}
             className="px-4 py-2 rounded-xl text-sm border border-border text-muted-foreground hover:bg-muted transition-colors">
             Показать ещё
+          </button>
+        </div>
+      )}
+      {showQuickNav && (
+        <div className="fixed right-4 bottom-4 z-30 flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => filtersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            className="px-3 py-2 rounded-xl border border-border bg-card/95 backdrop-blur text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            К фильтрам
+          </button>
+          <button
+            type="button"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            className="px-3 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-medium hover:scale-[1.02] active:scale-95 transition-transform"
+          >
+            Наверх
           </button>
         </div>
       )}
@@ -1891,8 +1935,22 @@ function CategoryForm({ category, categories, colorOptions, onSave, onCancel }: 
   const parentOptions = useMemo(() => {
     return categories
       .filter(c => c.id !== category?.id)
-      .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+      .map(c => ({ ...c, depth: c.id.split('/').length - 1 }))
+      .sort((a, b) => a.id.localeCompare(b.id, 'ru'));
   }, [categories, category?.id]);
+  const parentById = useMemo(() => {
+    return new Map(categories.map(c => [c.id, c]));
+  }, [categories]);
+  const getParentPathLabel = (id: string) => {
+    const parts = id.split('/').filter(Boolean);
+    if (!parts.length) return id;
+    const names: string[] = [];
+    for (let i = 0; i < parts.length; i += 1) {
+      const partialId = parts.slice(0, i + 1).join('/');
+      names.push(parentById.get(partialId)?.name || parts[i]);
+    }
+    return names.join(' / ');
+  };
   const derivedId = (form.parentId ? `${form.parentId}/${form.slug}` : form.slug).trim();
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -1937,7 +1995,9 @@ function CategoryForm({ category, categories, colorOptions, onSave, onCancel }: 
         >
           <option value="">Без родителя</option>
           {parentOptions.map(c => (
-            <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>
+            <option key={c.id} value={c.id}>
+              {`${'— '.repeat(c.depth)}${c.emoji ? `${c.emoji} ` : ''}${getParentPathLabel(c.id)}`}
+            </option>
           ))}
         </select>
       </div>
@@ -2020,6 +2080,7 @@ function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
     authorName: '',
     rating: 5,
     text: '',
+    image: '',
     approved: true,
     createdAt: '',
   });
@@ -2069,16 +2130,22 @@ function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
           if (!form.authorName.trim()) { toast.error('Введите имя'); return; }
           if (!form.text.trim()) { toast.error('Введите текст'); return; }
           try {
+            let image = form.image.trim();
+            if (image.startsWith('data:image/')) {
+              const uploaded = await api.uploadReviewImage(image) as { url?: unknown };
+              image = typeof uploaded?.url === 'string' ? uploaded.url : '';
+            }
             await api.addReview({
               productId: form.productId,
               authorName: form.authorName.trim(),
               rating: Number(form.rating) || 5,
               text: form.text.trim(),
+              ...(image ? { image } : {}),
               approved: Boolean(form.approved),
               ...(form.createdAt ? { createdAt: form.createdAt } : {}),
             });
             toast.success('Отзыв добавлен');
-            setForm(f => ({ ...f, authorName: '', rating: 5, text: '', approved: true, createdAt: '' }));
+            setForm(f => ({ ...f, authorName: '', rating: 5, text: '', image: '', approved: true, createdAt: '' }));
             loadReviews();
           } catch (err) {
             const code = err instanceof Error ? err.message : '';
@@ -2125,6 +2192,9 @@ function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
             rows={4}
             className="admin-input resize-none"
           />
+        </div>
+        <div className="sm:col-span-2">
+          <ImageUpload value={form.image} onChange={v => setFormField('image', v)} />
         </div>
         <div>
           <label className="text-xs font-medium text-muted-foreground mb-1 block">Дата</label>
@@ -2191,6 +2261,14 @@ function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
                 </div>
               </div>
               <div className="text-sm text-foreground/80 whitespace-pre-wrap">«{r.text}»</div>
+              {r.image && (
+                <img
+                  src={resolveMediaUrl(r.image)}
+                  alt=""
+                  className="w-full max-w-sm h-40 rounded-xl object-cover border border-border/40"
+                  loading="lazy"
+                />
+              )}
               <div className="flex flex-wrap gap-2 justify-end">
                 <button
                   type="button"

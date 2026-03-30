@@ -597,12 +597,14 @@ const ReviewCreateSchema = z.object({
   authorName: z.string().min(1),
   rating: z.number().int().min(1).max(5),
   text: z.string().min(1),
+  image: z.string().optional(),
 });
 const ReviewAdminSchema = z.object({
   productId: z.number().int(),
   authorName: z.string().min(1),
   rating: z.number().int().min(1).max(5),
   text: z.string().min(1),
+  image: z.string().optional(),
   approved: z.boolean().optional(),
   createdAt: z.string().optional(),
 });
@@ -611,6 +613,7 @@ const ReviewUpdateSchema = z.object({
   authorName: z.string().min(1).optional(),
   rating: z.number().int().min(1).max(5).optional(),
   text: z.string().min(1).optional(),
+  image: z.string().optional().nullable(),
   approved: z.boolean().optional(),
   createdAt: z.string().optional(),
 });
@@ -625,7 +628,7 @@ app.get("/api/products/:id/reviews", async (req, res) => {
   const productId = Number(req.params.id);
   if (!Number.isFinite(productId)) return res.json([]);
   const { rows } = await pool.query(
-    "select id,product_id,author_name,rating,text,created_at from reviews where product_id=$1 and approved=true order by created_at desc, id desc",
+    "select id,product_id,author_name,rating,text,image,created_at from reviews where product_id=$1 and approved=true order by created_at desc, id desc",
     [productId]
   );
   res.json(rows.map((r: any) => ({
@@ -634,6 +637,7 @@ app.get("/api/products/:id/reviews", async (req, res) => {
     authorName: r.author_name,
     rating: r.rating,
     text: r.text,
+    image: r.image ?? undefined,
     createdAt: r.created_at,
     approved: true,
   })));
@@ -660,15 +664,15 @@ app.post("/api/products/:id/reviews", requireCustomerAuth(async (req, res) => {
   if (!hasPurchase[0]) return res.status(403).json({ error: "not_purchased" });
   const data = ReviewCreateSchema.parse(req.body);
   await pool.query(
-    "insert into reviews(product_id,author_name,rating,text,approved) values($1,$2,$3,$4,false)",
-    [productId, data.authorName, data.rating, data.text]
+    "insert into reviews(product_id,author_name,rating,text,image,approved) values($1,$2,$3,$4,$5,false)",
+    [productId, data.authorName, data.rating, data.text, data.image ?? null]
   );
   res.status(201).json({ ok: true });
 }));
 
 app.get("/api/reviews", requireAuth(async (_req, res) => {
   const { rows } = await pool.query(
-    "select r.id,r.product_id,p.name as product_name,r.author_name,r.rating,r.text,r.approved,r.created_at from reviews r left join products p on p.id=r.product_id order by r.created_at desc, r.id desc"
+    "select r.id,r.product_id,p.name as product_name,r.author_name,r.rating,r.text,r.image,r.approved,r.created_at from reviews r left join products p on p.id=r.product_id order by r.created_at desc, r.id desc"
   );
   res.json(rows.map((r: any) => ({
     id: r.id,
@@ -677,6 +681,7 @@ app.get("/api/reviews", requireAuth(async (_req, res) => {
     authorName: r.author_name,
     rating: r.rating,
     text: r.text,
+    image: r.image ?? undefined,
     approved: r.approved,
     createdAt: r.created_at,
   })));
@@ -687,8 +692,8 @@ app.post("/api/reviews", requireAuth(async (req, res) => {
   const createdAt = toDate(data.createdAt);
   const approved = data.approved ?? true;
   const { rows } = await pool.query(
-    "insert into reviews(product_id,author_name,rating,text,approved,created_at) values($1,$2,$3,$4,$5,coalesce($6,now())) returning id",
-    [data.productId, data.authorName, data.rating, data.text, approved, createdAt]
+    "insert into reviews(product_id,author_name,rating,text,image,approved,created_at) values($1,$2,$3,$4,$5,$6,coalesce($7,now())) returning id",
+    [data.productId, data.authorName, data.rating, data.text, data.image ?? null, approved, createdAt]
   );
   res.status(201).json({ id: rows[0].id });
 }));
@@ -697,10 +702,11 @@ app.put("/api/reviews/:id", requireAuth(async (req, res) => {
   const id = Number(req.params.id);
   const data = ReviewUpdateSchema.parse(req.body);
   const hasCreatedAt = Object.prototype.hasOwnProperty.call(data, "createdAt");
+  const hasImage = Object.prototype.hasOwnProperty.call(data, "image");
   const createdAt = hasCreatedAt ? toDate(data.createdAt) : null;
   await pool.query(
-    "update reviews set product_id=coalesce($2,product_id), author_name=coalesce($3,author_name), rating=coalesce($4,rating), text=coalesce($5,text), approved=coalesce($6,approved), created_at=case when $7 then $8 else created_at end where id=$1",
-    [id, data.productId ?? null, data.authorName ?? null, data.rating ?? null, data.text ?? null, data.approved ?? null, hasCreatedAt, createdAt]
+    "update reviews set product_id=coalesce($2,product_id), author_name=coalesce($3,author_name), rating=coalesce($4,rating), text=coalesce($5,text), image=case when $6 then $7 else image end, approved=coalesce($8,approved), created_at=case when $9 then $10 else created_at end where id=$1",
+    [id, data.productId ?? null, data.authorName ?? null, data.rating ?? null, data.text ?? null, hasImage, data.image ?? null, data.approved ?? null, hasCreatedAt, createdAt]
   );
   res.json({ ok: true });
 }));
@@ -763,6 +769,8 @@ const articlesDir = path.join(uploadsDir, "articles");
 fs.mkdirSync(articlesDir, { recursive: true });
 const articleVideosDir = path.join(articlesDir, "videos");
 fs.mkdirSync(articleVideosDir, { recursive: true });
+const reviewsDir = path.join(uploadsDir, "reviews");
+fs.mkdirSync(reviewsDir, { recursive: true });
 const UploadProductSchema = z.object({ dataUrl: z.string().min(1) });
 app.post("/api/products/upload", requireAuth(async (req, res) => {
   try {
@@ -837,6 +845,26 @@ app.post("/api/articles/upload-video", requireAuth(async (req, res) => {
     const filePath = path.join(articleVideosDir, name);
     fs.writeFileSync(filePath, buf);
     const url = `/uploads/articles/videos/${name}`;
+    res.status(201).json({ url });
+  } catch {
+    res.status(400).json({ error: "bad_request" });
+  }
+}));
+
+const UploadReviewSchema = z.object({ dataUrl: z.string().min(1) });
+app.post("/api/reviews/upload", requireAuth(async (req, res) => {
+  try {
+    const { dataUrl } = UploadReviewSchema.parse(req.body);
+    const m = /^data:(image\/(png|jpeg|jpg|webp));base64,(.+)$/.exec(dataUrl);
+    if (!m) return res.status(400).json({ error: "bad_image" });
+    const mime = m[1];
+    const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
+    const buf = Buffer.from(m[3], "base64");
+    if (buf.length > 5 * 1024 * 1024) return res.status(400).json({ error: "too_large" });
+    const name = `review_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const filePath = path.join(reviewsDir, name);
+    fs.writeFileSync(filePath, buf);
+    const url = `/uploads/reviews/${name}`;
     res.status(201).json({ url });
   } catch {
     res.status(400).json({ error: "bad_request" });

@@ -90,6 +90,7 @@ export interface Review {
   authorName: string;
   rating: number;
   text: string;
+  image?: string;
   approved: boolean;
   createdAt?: string;
   productName?: string;
