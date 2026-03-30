@@ -24,7 +24,6 @@ export default function CartDrawer({
   open, onClose, items, subtotal, discount, total,
   promoCode, onUpdateQty, onUpdatePackaging, onRemove, onApplyPromo, onCheckout
 }: CartDrawerProps) {
-  const NONE_VALUE = '__none__';
   const [promoInput, setPromoInput] = useState('');
   const [promoError, setPromoError] = useState(false);
   const { packagingOptions } = useStore();
@@ -34,7 +33,7 @@ export default function CartDrawer({
     return activePackaging.find(p => p.id === id) ?? null;
   };
   const getPackagingImage = (p?: { image?: string; images?: string[] }) => resolveMediaUrl(p?.image || p?.images?.[0] || '');
-  const packagingChoices = [{ id: NONE_VALUE, name: 'Без упаковки', price: 0, image: '', images: [] as string[] }, ...activePackaging];
+  const packagingChoices = activePackaging;
 
   const handlePromo = async () => {
     const ok = await onApplyPromo(promoInput.trim());
@@ -86,12 +85,12 @@ export default function CartDrawer({
                           <CarouselContent className="-ml-2">
                             {packagingChoices.map(p => {
                               const imageUrl = getPackagingImage(p);
-                              const active = (item.packagingId ?? NONE_VALUE) === p.id;
+                              const active = item.packagingId === p.id;
                               return (
                                 <CarouselItem key={p.id} className="pl-2 basis-[70px]">
                                   <button
                                     type="button"
-                                    onClick={() => onUpdatePackaging(item.product.id, p.id === NONE_VALUE ? null : p.id)}
+                                    onClick={() => onUpdatePackaging(item.product.id, p.id)}
                                     className={`w-full rounded-2xl border text-left p-2 transition ${
                                       active ? 'border-primary/60 bg-primary/10' : 'border-border bg-card hover:bg-muted/40'
                                     }`}
@@ -100,7 +99,7 @@ export default function CartDrawer({
                                       {imageUrl ? (
                                         <img src={imageUrl} alt="" className="w-full h-full object-cover" />
                                       ) : (
-                                        <span className="text-[9px] text-muted-foreground">Без упаковки</span>
+                                        <span className="text-[9px] text-muted-foreground">{p.name}</span>
                                       )}
                                     </div>
                                     <div className="mt-1 text-[9px] font-medium line-clamp-2">{p.name}</div>

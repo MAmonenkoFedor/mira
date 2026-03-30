@@ -239,11 +239,12 @@ describe('admin crud', () => {
         description: 'Badge',
         image: '/images/badge.jpg',
         popularity: 3,
-        badge: 'qa_badge',
+        badge: 'qa_badge,sale',
+        badgeIds: ['qa_badge', 'sale'],
       });
     });
     const badgeProduct = result.current.products.find(p => p.name === 'Badge Product');
-    expect(badgeProduct?.badge).toBe('qa_badge');
+    expect(badgeProduct?.badge).toBe('qa_badge,sale');
 
     act(() => {
       result.current.updateBadge('qa_badge', { label: 'QA Updated' });
@@ -254,7 +255,7 @@ describe('admin crud', () => {
       result.current.deleteBadge('qa_badge');
     });
     expect(result.current.badges.some(b => b.id === 'qa_badge')).toBe(false);
-    expect(result.current.products.find(p => p.id === badgeProduct!.id)?.badge).toBeUndefined();
+    expect(result.current.products.find(p => p.id === badgeProduct!.id)?.badge).toBe('sale');
   });
 
   it('handles update-only admin sections and order update', async () => {

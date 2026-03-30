@@ -28,7 +28,23 @@ export function resolveMediaUrl(url?: string | null) {
 
 async function j<T>(res: Response | Promise<Response>): Promise<T> {
   const r = await res;
-  if (!r.ok) throw new Error(String(r.status));
+  if (!r.ok) {
+    let detail = "";
+    try {
+      const contentType = r.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const data = await r.clone().json() as Record<string, unknown>;
+        const rawDetail = data.message || data.error || data.detail;
+        if (typeof rawDetail === "string") detail = rawDetail.trim();
+      } else {
+        const text = (await r.clone().text()).trim();
+        if (text && text.length <= 300) detail = text;
+      }
+    } catch {
+      detail = "";
+    }
+    throw new Error(detail ? `${r.status}|${detail}` : String(r.status));
+  }
   return r.json();
 }
 

@@ -4,10 +4,39 @@ import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, Package, FileText, Tag, Gif
 import { toast } from 'sonner';
 import { useStore, type Article, type Order } from '@/components/candy-store/useStore';
 import { api, resolveMediaUrl } from '@/lib/api';
-import { badgeToneSoftClasses, badgeToneClasses } from '@/components/candy-store/data';
+import { badgeToneSoftClasses, badgeToneClasses, getProductBadgeIds } from '@/components/candy-store/data';
 import type { Product, Category, Promo, PromoScope, Badge, BadgeTone, PackagingOption, Review, FeatureBlock } from '@/components/candy-store/data';
 
 type Tab = 'products' | 'categories' | 'packaging' | 'articles' | 'promos' | 'import' | 'hero' | 'badges' | 'orders' | 'header' | 'footer' | 'reviews' | 'benefits' | 'about';
+
+const getErrorStatus = (err: unknown): number | null => {
+  if (!(err instanceof Error)) return null;
+  const match = err.message.trim().match(/^(\d{3})(?:\b|[:|])/);
+  return match ? Number(match[1]) : null;
+};
+
+const getErrorDetail = (err: unknown): string => {
+  if (!(err instanceof Error)) return '';
+  const raw = err.message.trim();
+  const byDelimiter = raw.match(/^\d{3}[|:]\s*(.+)$/);
+  if (byDelimiter?.[1]) return byDelimiter[1].trim();
+  if (/^\d{3}$/.test(raw)) return '';
+  return raw;
+};
+
+const getFriendlyActionError = (err: unknown, action: string) => {
+  const status = getErrorStatus(err);
+  const detail = getErrorDetail(err);
+  if (status === 401 || status === 403) return 'Нет доступа. Перезайдите в админку.';
+  if (status === 404) return `${action}: запись не найдена. Обновите страницу и попробуйте снова.`;
+  if (status === 409) return `${action}: такая запись уже существует. Измените ID или код и повторите.`;
+  if (status === 413) return `${action}: файл слишком большой. Уменьшите размер файла и повторите.`;
+  if (status === 422 || status === 400) return `${action}: проверьте заполнение полей${detail ? ` (${detail})` : ''}.`;
+  if (status === 429) return `${action}: слишком много запросов. Подождите пару секунд и повторите.`;
+  if (status && status >= 500) return `${action}: временная ошибка сервера. Попробуйте снова чуть позже.`;
+  if (detail) return `${action}: ${detail}`;
+  return `${action}. Проверьте заполнение полей и интернет-соединение.`;
+};
 
 const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader();
@@ -362,7 +391,10 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
     }
 
     if (badgeFilter !== 'all') {
-      list = list.filter(p => p.badge === badgeFilter);
+      list = list.filter(p => {
+        const ids = getProductBadgeIds(p);
+        return badgeFilter === '' ? ids.length === 0 : ids.includes(badgeFilter);
+      });
     }
 
     if (search.trim()) {
@@ -467,9 +499,7 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
               else { await store.addProduct(data as Omit<Product, 'id'>); toast.success('Товар добавлен'); }
               setEditing(null); setCreating(false);
             } catch (err) {
-              const code = err instanceof Error ? err.message : '';
-              if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-              else toast.error('Не удалось сохранить товар');
+              toast.error(getFriendlyActionError(err, 'Не удалось сохранить товар'));
             }
           }}
           onCancel={() => { setEditing(null); setCreating(false); }}
@@ -489,15 +519,15 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
                 {p.active === false && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-destructive/10 text-destructive">снят</span>
                 )}
-                {p.badge && (() => {
-                  const badge = store.badges.find(b => b.id === p.badge);
+                {getProductBadgeIds(p).map(id => {
+                  const badge = store.badges.find(b => b.id === id);
                   if (!badge) return null;
                   return (
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${badge.active ? badgeToneSoftClasses[badge.tone] : 'bg-muted text-muted-foreground'}`}>
+                    <span key={badge.id} className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${badge.active ? badgeToneSoftClasses[badge.tone] : 'bg-muted text-muted-foreground'}`}>
                       {badge.label}{badge.active ? '' : ' (выключен)'}
                     </span>
                   );
-                })()}
+                })}
               </div>
               <div className="text-xs text-muted-foreground">
                 {(() => {
@@ -1072,13 +1102,19 @@ function ImportTab({ store }: { store: ReturnType<typeof useStore> }) {
           ? p.categories.map((x: unknown) => String(x)).filter(Boolean)
           : [String(p.category || '')].filter(Boolean);
         if (!cats.length) continue;
+        const badgeIds = (
+          Array.isArray(p.badgeIds) ? p.badgeIds : typeof p.badge === 'string' ? p.badge.split(',') : []
+        )
+          .map((x: unknown) => String(x).trim())
+          .filter(Boolean);
         await store.addProduct({
           name: String(p.name).trim(),
           price: Number(p.price),
           oldPrice: p.oldPrice ? Number(p.oldPrice) : undefined,
           categories: cats,
           category: cats[0],
-          badge: p.badge === 'new' || p.badge === 'sale' ? p.badge : undefined,
+          badge: badgeIds.join(',') || undefined,
+          badgeIds: badgeIds.length ? badgeIds : undefined,
           description: String(p.description || ''),
           image: String(p.image || ''),
           popularity: Number(p.popularity || 5),
@@ -1122,7 +1158,7 @@ function ImportTab({ store }: { store: ReturnType<typeof useStore> }) {
           onChange={e => setProdText(e.target.value)}
           rows={10}
           className="admin-input w-full resize-y"
-          placeholder='[{"name":"Шоколад","price":290,"category":"chocolate","description":"...","image":"/images/chocolate.jpg","badge":"new","popularity":8,"active":true}]'
+          placeholder='[{"name":"Шоколад","price":290,"category":"chocolate","description":"...","image":"/images/chocolate.jpg","badge":"new,sale","badgeIds":["new","sale"],"popularity":8,"active":true}]'
         />
         <div className="text-xs text-muted-foreground mt-2">Изображения кладите в /public/images и указывайте путь вида /images/filename.jpg</div>
         <div className="flex justify-end mt-3">
@@ -1140,7 +1176,7 @@ type ProductFormState = {
   price: number;
   oldPrice: number;
   categories: string[];
-  badge: string;
+  badgeIds: string[];
   description: string;
   sku: string;
   compositionShort: string;
@@ -1188,7 +1224,7 @@ function ProductForm({ product, categories: cats, badges, packagingOptions, onSa
           ? [(product as any).category]
           : (cats[0]?.id ? [cats[0].id] : [])
     ) as string[],
-    badge: product?.badge || '',
+    badgeIds: getProductBadgeIds(product),
     description: product?.description || '',
     sku: product?.sku || '',
     compositionShort: product?.compositionShort || '',
@@ -1205,10 +1241,24 @@ function ProductForm({ product, categories: cats, badges, packagingOptions, onSa
     videoUrl: (product as any)?.videoUrl || '',
     popularity: product?.popularity || 5,
     active: product?.active !== false,
-    packagingMode: product?.packagingMode || 'none',
+    packagingMode: product?.packagingMode === 'none' ? 'selectable' : (product?.packagingMode || 'selectable'),
     standardPackagingId: product?.standardPackagingId || '',
   });
   const set = <K extends keyof ProductFormState>(k: K, v: ProductFormState[K]) => setForm(f => ({ ...f, [k]: v }));
+  const toggleCategory = (id: string) => {
+    setForm(prev => {
+      const has = prev.categories.includes(id);
+      const next = has ? prev.categories.filter(x => x !== id) : [...prev.categories, id];
+      return { ...prev, categories: next };
+    });
+  };
+  const toggleBadge = (id: string) => {
+    setForm(prev => {
+      const has = prev.badgeIds.includes(id);
+      const next = has ? prev.badgeIds.filter(x => x !== id) : [...prev.badgeIds, id];
+      return { ...prev, badgeIds: next };
+    });
+  };
 
   useEffect(() => {
     if (form.packagingMode !== 'standard') return;
@@ -1219,15 +1269,15 @@ function ProductForm({ product, categories: cats, badges, packagingOptions, onSa
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim()) { toast.error('Введите название'); return; }
-    if (form.price <= 0) { toast.error('Введите цену'); return; }
+    if (!form.name.trim()) { toast.error('Введите название товара'); return; }
+    if (form.price <= 0) { toast.error('Введите цену больше 0 ₽'); return; }
     const categories = (Array.isArray(form.categories) ? form.categories : []).map(String).filter(Boolean);
-    if (!categories.length) { toast.error('Выберите хотя бы одну категорию'); return; }
+    if (!categories.length) { toast.error('Выберите хотя бы одну категорию, чтобы товар появился в каталоге'); return; }
     let standardPackagingId = form.standardPackagingId;
     if (form.packagingMode === 'standard' && !standardPackagingId) {
       standardPackagingId = defaultStandardPackagingId;
       if (!standardPackagingId) {
-        toast.error('Выберите стандартную упаковку');
+        toast.error('Выберите стандартную упаковку или переключите режим на "На выбор"');
         return;
       }
     }
@@ -1251,16 +1301,18 @@ function ProductForm({ product, categories: cats, badges, packagingOptions, onSa
         const res = await api.uploadProductVideo(videoUrl) as { url: string };
         videoUrl = res.url;
       } catch {
-        toast.error('Не удалось загрузить видео');
+        toast.error('Не удалось загрузить видео. Проверьте формат и размер файла (до 20 МБ).');
         return;
       }
     }
+    const badgeIds = (Array.isArray(form.badgeIds) ? form.badgeIds : []).map(String).filter(Boolean);
     onSave({
       name: form.name.trim(), price: form.price,
       oldPrice: form.oldPrice || undefined,
       categories,
       category: categories[0],
-      badge: (form.badge as Product['badge']) || undefined,
+      badge: badgeIds.join(',') || undefined,
+      badgeIds: badgeIds.length ? badgeIds : undefined,
       description: form.description.trim(), image: images[0] || form.image, images,
       videoUrl: videoUrl || null,
       sku: form.sku.trim() || undefined,
@@ -1295,24 +1347,57 @@ function ProductForm({ product, categories: cats, badges, packagingOptions, onSa
       </div>
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Категории</label>
-        <select
-          multiple
-          value={form.categories}
-          onChange={e => set('categories', Array.from(e.target.selectedOptions).map(o => o.value))}
-          className="admin-input"
-          size={6}
-        >
-          {cats.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
-        </select>
+        <div className="admin-input min-h-[9.5rem] p-2 overflow-y-auto">
+          <div className="flex flex-wrap gap-2">
+            {cats.map(c => {
+              const selected = form.categories.includes(c.id);
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => toggleCategory(c.id)}
+                  className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
+                    selected
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-muted/60 text-foreground border-border hover:bg-muted'
+                  }`}
+                >
+                  {c.emoji ? `${c.emoji} ` : ''}{c.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="text-[11px] text-muted-foreground mt-1">
+          Выберите одну или несколько категорий
+        </div>
       </div>
       <div>
-        <label className="text-xs font-medium text-muted-foreground mb-1 block">Бейдж</label>
-        <select value={form.badge} onChange={e => set('badge', e.target.value)} className="admin-input">
-          <option value="">Нет</option>
-          {badges.map(b => (
-            <option key={b.id} value={b.id}>{b.label}{b.active ? '' : ' (выключен)'}</option>
-          ))}
-        </select>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Бейджи</label>
+        <div className="admin-input min-h-[9.5rem] p-2 overflow-y-auto">
+          <div className="flex flex-wrap gap-2">
+            {badges.map(b => {
+              const selected = form.badgeIds.includes(b.id);
+              return (
+                <button
+                  key={b.id}
+                  type="button"
+                  onClick={() => toggleBadge(b.id)}
+                  className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
+                    selected
+                      ? `${badgeToneSoftClasses[b.tone]} border-transparent`
+                      : 'bg-muted/60 text-foreground border-border hover:bg-muted'
+                  }`}
+                >
+                  {b.label}{b.active ? '' : ' (выключен)'}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="text-[11px] text-muted-foreground mt-1">
+          Можно выбрать несколько бейджей
+        </div>
       </div>
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Популярность (1-10)</label>
@@ -1331,7 +1416,6 @@ function ProductForm({ product, categories: cats, badges, packagingOptions, onSa
           }}
           className="admin-input"
         >
-          <option value="none">Без упаковки</option>
           <option value="standard">Стандартная</option>
           <option value="selectable">На выбор</option>
         </select>
@@ -1464,16 +1548,14 @@ function PackagingTab({ store }: { store: ReturnType<typeof useStore> }) {
                 await store.updatePackagingOption(editing.id, data);
                 toast.success('Упаковка обновлена');
               } else {
-                if (!data.id) { toast.error('Введите ID'); return; }
-                if (store.packagingOptions.some(p => p.id === data.id)) { toast.error('ID уже используется'); return; }
+                if (!data.id) { toast.error('Введите ID упаковки (например: gift_wrap)'); return; }
+                if (store.packagingOptions.some(p => p.id === data.id)) { toast.error('ID уже используется. Выберите другой, например gift_wrap_2'); return; }
                 await store.addPackagingOption({ id: data.id, name: data.name!, price: data.price!, active: data.active ?? true, image: data.image, images: data.images });
                 toast.success('Упаковка добавлена');
               }
               setEditing(null); setCreating(false);
             } catch (err) {
-              const code = err instanceof Error ? err.message : '';
-              if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-              else toast.error('Не удалось сохранить упаковку');
+              toast.error(getFriendlyActionError(err, 'Не удалось сохранить упаковку'));
             }
           }}
           onCancel={() => { setEditing(null); setCreating(false); }}
@@ -1551,8 +1633,13 @@ function PackagingForm({ option, onSave, onCancel }: {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim()) { toast.error('Введите название'); return; }
-    if (isNew && !form.id.trim()) { toast.error('Введите ID'); return; }
+    const normalizedId = form.id.trim().toLowerCase().replace(/\s+/g, '_');
+    if (!form.name.trim()) { toast.error('Введите название упаковки'); return; }
+    if (isNew && !normalizedId) { toast.error('Введите ID упаковки (например: gift_wrap)'); return; }
+    if (isNew && !/^[a-z0-9_/-]+$/.test(normalizedId)) {
+      toast.error('ID может содержать только латиницу, цифры, "_" и "/"');
+      return;
+    }
     if (form.price < 0) { toast.error('Цена не может быть отрицательной'); return; }
     let cover = form.image.trim();
     if (cover.startsWith('data:image/')) {
@@ -1566,7 +1653,7 @@ function PackagingForm({ option, onSave, onCancel }: {
       }
     }
     onSave({
-      ...(isNew ? { id: form.id.trim().toLowerCase().replace(/\s+/g, '_') } : {}),
+      ...(isNew ? { id: normalizedId } : {}),
       name: form.name.trim(),
       price: Math.round(Number(form.price) || 0),
       active: Boolean(form.active),
@@ -1581,6 +1668,7 @@ function PackagingForm({ option, onSave, onCancel }: {
         <div className="sm:col-span-2">
           <label className="text-xs font-medium text-muted-foreground mb-1 block">ID</label>
           <input value={form.id} onChange={e => set('id', e.target.value)} className="admin-input" placeholder="gift_wrap" />
+          <div className="text-[11px] text-muted-foreground mt-1">Только латиница, цифры и "_". Пробелы автоматически заменяются на "_".</div>
         </div>
       )}
       <div className="sm:col-span-2">
@@ -1656,9 +1744,7 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
               else { await store.addCategory(data as Omit<Category, 'id'> & { id?: string }); toast.success('Категория добавлена'); }
               setEditing(null); setCreating(false);
             } catch (err) {
-              const code = err instanceof Error ? err.message : '';
-              if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-              else toast.error('Не удалось сохранить категорию');
+              toast.error(getFriendlyActionError(err, 'Не удалось сохранить категорию'));
             }
           }}
           onCancel={() => { setEditing(null); setCreating(false); }}
@@ -1811,9 +1897,13 @@ function CategoryForm({ category, categories, colorOptions, onSave, onCancel }: 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim()) { toast.error('Введите название'); return; }
-    if (!form.slug.trim()) { toast.error('Введите ID категории'); return; }
+    if (!form.name.trim()) { toast.error('Введите название категории'); return; }
+    if (!form.slug.trim()) { toast.error('Введите ID категории (латиницей)'); return; }
     const normalizedSlug = form.slug.trim().toLowerCase().replace(/\s+/g, '_');
+    if (!/^[a-z0-9_-]+$/.test(normalizedSlug)) {
+      toast.error('ID категории может содержать только латиницу, цифры, "_" и "-"');
+      return;
+    }
     const normalizedParent = form.parentId.trim();
     const id = (normalizedParent ? `${normalizedParent}/${normalizedSlug}` : normalizedSlug);
     const parsedOrder = form.homeOrder === '' ? undefined : Number(form.homeOrder);
@@ -1855,6 +1945,7 @@ function CategoryForm({ category, categories, colorOptions, onSave, onCancel }: 
         <label className="text-xs font-medium text-muted-foreground mb-1 block">ID (латиница)</label>
         <input value={form.slug} onChange={e => set('slug', e.target.value)} maxLength={30}
           className="admin-input" placeholder="например: candy" />
+        <div className="text-[11px] text-muted-foreground mt-1">Используйте короткий ID без пробелов: candy, gift_box, sugar-free.</div>
       </div>
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Раздел</label>
@@ -2335,7 +2426,7 @@ function BadgesTab({ store }: { store: ReturnType<typeof useStore> }) {
 
       <div className="grid gap-3">
         {store.badges.map(b => {
-          const count = store.products.filter(p => p.badge === b.id).length;
+          const count = store.products.filter(p => getProductBadgeIds(p).includes(b.id)).length;
           return (
             <div key={b.id} className="flex items-center gap-4 bg-card rounded-2xl p-4 border border-border/40 shadow-sm">
               <span className={`text-xs px-2 py-1 rounded-full font-medium ${b.active ? badgeToneClasses[b.tone] : 'bg-muted text-muted-foreground'}`}>
@@ -2468,9 +2559,7 @@ function PromosTab({ store }: { store: ReturnType<typeof useStore> }) {
               else { await store.addPromo(data as any); toast.success('Промокод добавлен'); }
               setEditing(null); setCreating(false);
             } catch (err) {
-              const code = err instanceof Error ? err.message : '';
-              if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-              else toast.error('Не удалось сохранить промокод');
+              toast.error(getFriendlyActionError(err, 'Не удалось сохранить промокод'));
             }
           }}
           onCancel={() => { setEditing(null); setCreating(false); }}
@@ -2536,17 +2625,22 @@ function PromoForm({ promo, categories, onSave, onCancel }: {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.code.trim()) { toast.error('Введите код'); return; }
-    if (form.percent <= 0 || form.percent > 90) { toast.error('Процент 1–90'); return; }
+    if (!form.code.trim()) { toast.error('Введите код промокода (например: SWEET15)'); return; }
+    if (form.percent <= 0 || form.percent > 90) { toast.error('Скидка должна быть от 1% до 90%'); return; }
     const payload: any = {
       code: form.code.trim().toUpperCase(),
       percent: Number(form.percent),
       scope: form.scope as PromoScope,
       active: Boolean(form.active),
     };
-    if (form.scope === 'category') payload.categories = form.categories.filter(Boolean);
+    if (form.scope === 'category') {
+      const categoryIds = form.categories.filter(Boolean);
+      if (!categoryIds.length) { toast.error('Выберите хотя бы одну категорию для промокода'); return; }
+      payload.categories = categoryIds;
+    }
     if (form.scope === 'product') {
       const ids = form.products.split(',').map(s => Number(s.trim())).filter(n => Number.isFinite(n) && n > 0);
+      if (!ids.length) { toast.error('Введите хотя бы один ID товара, например: 1,2,5'); return; }
       payload.products = ids;
     }
     onSave(payload);
@@ -2557,6 +2651,7 @@ function PromoForm({ promo, categories, onSave, onCancel }: {
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Код</label>
         <input value={form.code} onChange={e => set('code', e.target.value)} maxLength={30} className="admin-input" placeholder="например: SWEET15" />
+        <div className="text-[11px] text-muted-foreground mt-1">Код сохранится в верхнем регистре. Избегайте пробелов.</div>
       </div>
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Скидка, %</label>
@@ -2639,9 +2734,7 @@ function ArticlesTab({ store }: { store: ReturnType<typeof useStore> }) {
               else { await store.addArticle(data as Omit<Article, 'id'>); toast.success('Статья добавлена'); }
               setEditing(null); setCreating(false);
             } catch (err) {
-              const code = err instanceof Error ? err.message : '';
-              if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-              else toast.error('Не удалось сохранить статью');
+              toast.error(getFriendlyActionError(err, 'Не удалось сохранить статью'));
             }
           }}
           onCancel={() => { setEditing(null); setCreating(false); }}
@@ -2739,8 +2832,9 @@ function ArticleForm({ article, onSave, onCancel, products, categories }: {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.title.trim()) { toast.error('Введите заголовок'); return; }
-    if (!form.excerpt.trim()) { toast.error('Введите текст статьи'); return; }
+    if (!form.excerpt.trim()) { toast.error('Введите краткое описание для карточки статьи'); return; }
     const slug = form.slug.trim() || toSlug(form.title);
+    if (!slug.trim()) { toast.error('Не удалось сформировать ссылку статьи. Добавьте заголовок латиницей или заполните slug вручную.'); return; }
     if (form.images.length > 7) { toast.error('Макс. 7 фото'); return; }
     let cover = form.image.trim();
     let images: string[] = [];

@@ -10,7 +10,6 @@ import { resolveMediaUrl } from '@/lib/api';
 import { Carousel, CarouselContent, CarouselItem } from '@/components/ui/carousel';
 
 export default function Cart() {
-  const NONE_VALUE = '__none__';
   const cart = useCart();
   const navigate = useNavigate();
   const { packagingOptions } = useStore();
@@ -22,10 +21,7 @@ export default function Cart() {
     return activePackaging.find(p => p.id === id) ?? null;
   };
   const getPackagingImage = (p?: { image?: string; images?: string[] }) => resolveMediaUrl(p?.image || p?.images?.[0] || '');
-  const packagingChoices = useMemo(
-    () => [{ id: NONE_VALUE, name: 'Без упаковки', price: 0, image: '', images: [] as string[] }, ...activePackaging],
-    [activePackaging]
-  );
+  const packagingChoices = useMemo(() => activePackaging, [activePackaging]);
 
   const handlePromo = async () => {
     const ok = await cart.applyPromo(promoInput.trim());
@@ -137,12 +133,12 @@ export default function Cart() {
                                 <CarouselContent className="-ml-2">
                                   {packagingChoices.map(p => {
                                     const imageUrl = getPackagingImage(p);
-                                    const active = (item.packagingId ?? NONE_VALUE) === p.id;
+                                    const active = item.packagingId === p.id;
                                     return (
                                       <CarouselItem key={p.id} className="pl-2 basis-[90px]">
                                         <button
                                           type="button"
-                                          onClick={() => cart.updatePackaging(item.product.id, p.id === NONE_VALUE ? null : p.id)}
+                                          onClick={() => cart.updatePackaging(item.product.id, p.id)}
                                           className={`w-full rounded-2xl border text-left p-2 transition ${
                                             active ? 'border-primary/60 bg-primary/10' : 'border-border bg-card hover:bg-muted/40'
                                           }`}
@@ -151,7 +147,7 @@ export default function Cart() {
                                             {imageUrl ? (
                                               <img src={imageUrl} alt="" className="w-full h-full object-cover" />
                                             ) : (
-                                              <span className="text-[10px] text-muted-foreground">Без упаковки</span>
+                                              <span className="text-[10px] text-muted-foreground">{p.name}</span>
                                             )}
                                           </div>
                                           <div className="mt-1 text-[10px] font-medium line-clamp-2">{p.name}</div>

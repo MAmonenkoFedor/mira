@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Heart, ShoppingCart } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Product, badgeToneClasses } from './data';
+import { Product, badgeToneClasses, getProductBadgeIds } from './data';
 import { resolveMediaUrl } from '@/lib/api';
 import { useStore } from './useStore';
 
@@ -24,7 +24,11 @@ export default function ProductCard({ product, onAdd }: ProductCardProps) {
     return imageUrls.map((url) => ({ type: 'image' as const, url }));
   }, [product]);
   const posterUrl = useMemo(() => resolveMediaUrl(product.image), [product.image]);
-  const badge = useMemo(() => badges.find(b => b.id === product.badge && b.active), [badges, product.badge]);
+  const productBadgeIds = useMemo(() => getProductBadgeIds(product), [product]);
+  const productBadges = useMemo(
+    () => productBadgeIds.map(id => badges.find(b => b.id === id && b.active)).filter(Boolean),
+    [badges, productBadgeIds],
+  );
   const [idx, setIdx] = useState(0);
   useEffect(() => { setIdx(0); }, [product.id]);
   return (
@@ -56,12 +60,17 @@ export default function ProductCard({ product, onAdd }: ProductCardProps) {
             />
           )
         ))}
-        {badge && (
-          <span
-            className={`absolute top-3 left-3 px-3 py-1 rounded-full text-xs font-bold font-display ${badgeToneClasses[badge.tone]}`}
-          >
-            {badge.label}
-          </span>
+        {productBadges.length > 0 && (
+          <div className="absolute top-3 left-3 flex flex-wrap gap-1.5 max-w-[85%]">
+            {productBadges.map(badge => (
+              <span
+                key={badge.id}
+                className={`px-3 py-1 rounded-full text-xs font-bold font-display ${badgeToneClasses[badge.tone]}`}
+              >
+                {badge.label}
+              </span>
+            ))}
+          </div>
         )}
         {slides.length > 1 && (
           <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2 bg-black/20 backdrop-blur rounded-full px-3 py-1.5">

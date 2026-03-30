@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X, Minus, Plus } from 'lucide-react';
-import { Product, badgeToneClasses } from './data';
+import { Product, badgeToneClasses, getProductBadgeIds } from './data';
 import { resolveMediaUrl } from '@/lib/api';
 import { useStore } from './useStore';
 
@@ -17,7 +17,11 @@ export default function ProductModal({ product, onClose, onAdd }: ProductModalPr
     const list = product.images && product.images.length ? product.images : [product.image];
     return list.map((u) => resolveMediaUrl(u));
   }, [product]);
-  const badge = useMemo(() => badges.find(b => b.id === product.badge && b.active), [badges, product.badge]);
+  const productBadgeIds = useMemo(() => getProductBadgeIds(product), [product]);
+  const productBadges = useMemo(
+    () => productBadgeIds.map(id => badges.find(b => b.id === id && b.active)).filter(Boolean),
+    [badges, productBadgeIds],
+  );
   const [idx, setIdx] = useState(0);
   useEffect(() => { setIdx(0); }, [product.id]);
 
@@ -62,12 +66,12 @@ export default function ProductModal({ product, onClose, onAdd }: ProductModalPr
         </div>
 
         <div className="p-6 pt-5 overflow-y-auto min-h-0">
-          <div className="flex items-start gap-2 mb-2">
-            {badge && (
-              <span className={`px-3 py-1 rounded-full text-xs font-bold font-display ${badgeToneClasses[badge.tone]}`}>
+          <div className="flex items-start gap-2 mb-2 flex-wrap">
+            {productBadges.map(badge => (
+              <span key={badge.id} className={`px-3 py-1 rounded-full text-xs font-bold font-display ${badgeToneClasses[badge.tone]}`}>
                 {badge.label}
               </span>
-            )}
+            ))}
           </div>
           <h3 className="font-display text-xl md:text-2xl font-bold mb-2">{product.name}</h3>
           <p className="text-muted-foreground text-sm md:text-[15px] mb-5 leading-relaxed">{product.description}</p>

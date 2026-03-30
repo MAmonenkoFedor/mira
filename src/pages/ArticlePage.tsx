@@ -7,7 +7,7 @@ import Footer from '@/components/candy-store/Footer';
 import { useCart } from '@/components/candy-store/useCart';
 import { toast } from 'sonner';
 import { resolveMediaUrl } from '@/lib/api';
-import { badgeToneSoftClasses } from '@/components/candy-store/data';
+import { badgeToneSoftClasses, getProductBadgeIds } from '@/components/candy-store/data';
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from '@/components/ui/carousel';
 
 export default function ArticlePage() {
@@ -18,7 +18,12 @@ export default function ArticlePage() {
   const article = articles.find(a => a.slug === slug);
   const linked = article?.productId ? products.find((p: any) => p.id === article.productId && (p.active ?? true)) : null;
   const linkedCategory = article?.categoryId ? categories.find((c: any) => c.id === article.categoryId) : null;
-  const linkedBadge = useMemo(() => linked ? badges.find((b: any) => b.id === linked.badge && b.active) : null, [badges, linked]);
+  const linkedBadges = useMemo(() => {
+    if (!linked) return [];
+    return getProductBadgeIds(linked)
+      .map(id => badges.find((b: any) => b.id === id && b.active))
+      .filter(Boolean);
+  }, [badges, linked]);
   const slides = useMemo(() => {
     if (!article) return [];
     const list = article.images && article.images.length ? article.images : (article.image ? [article.image] : []);
@@ -199,11 +204,11 @@ export default function ArticlePage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-display font-semibold">{linked.name}</span>
-                    {linkedBadge && (
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${badgeToneSoftClasses[linkedBadge.tone]}`}>
+                    {linkedBadges.map((linkedBadge: any) => (
+                      <span key={linkedBadge.id} className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${badgeToneSoftClasses[linkedBadge.tone]}`}>
                         {linkedBadge.label}
                       </span>
-                    )}
+                    ))}
                   </div>
                   <div className="text-sm text-muted-foreground">{linked.description}</div>
                   <div className="mt-2 font-display font-bold text-primary">{linked.price} ₽</div>

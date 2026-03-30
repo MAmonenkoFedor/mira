@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Search } from 'lucide-react';
-import { type Product, type Category } from './data';
+import { type Product, type Category, getProductBadgeIds } from './data';
 import { useStore } from './useStore';
 import ProductCard from './ProductCard';
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from '@/components/ui/carousel';
@@ -95,7 +95,7 @@ export default function Products({
     }
 
     if (badgeFilter !== 'all') {
-      list = list.filter(p => p.badge === badgeFilter);
+      list = list.filter(p => getProductBadgeIds(p).includes(badgeFilter));
     }
 
     switch (sort) {

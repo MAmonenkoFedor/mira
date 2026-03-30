@@ -6,6 +6,7 @@ export interface Product {
   category?: string;
   categories?: string[];
   badge?: string;
+  badgeIds?: string[];
   description: string;
   sku?: string;
   compositionShort?: string;
@@ -24,6 +25,17 @@ export interface Product {
   active?: boolean;
   packagingMode?: 'none' | 'standard' | 'selectable';
   standardPackagingId?: string | null;
+}
+
+export function getProductBadgeIds(product?: Pick<Product, 'badge' | 'badgeIds'> | null): string[] {
+  if (!product) return [];
+  const fromList = Array.isArray(product.badgeIds)
+    ? product.badgeIds.map(v => String(v).trim()).filter(Boolean)
+    : [];
+  const fromSingle = typeof product.badge === 'string'
+    ? product.badge.split(',').map(v => v.trim()).filter(Boolean)
+    : [];
+  return Array.from(new Set([...fromList, ...fromSingle]));
 }
 
 export interface Category {

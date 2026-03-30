@@ -117,6 +117,13 @@ const Index = () => {
     toast.success(`Промокод ${code.toUpperCase()} применён!`);
     navigate('/cart');
   }, [cart, navigate]);
+  const handleHomeCategorySelect = useCallback((id: string | null) => {
+    if (!id) {
+      navigate('/catalog');
+      return;
+    }
+    navigate(`/catalog?category=${encodeURIComponent(id)}`);
+  }, [navigate]);
 
   const productCategoryIds = useMemo(() => {
     const set = new Set<string>();
@@ -161,7 +168,7 @@ const Index = () => {
           items={homeCategories}
           enableHierarchy={false}
           activeCategory={activeCategory}
-          onSelect={setActiveCategory}
+          onSelect={handleHomeCategorySelect}
         />
         <Products
           activeCategory={activeCategory}

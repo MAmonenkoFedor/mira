@@ -8,7 +8,7 @@ import { useStore } from '@/components/candy-store/useStore';
 import { api, resolveMediaUrl } from '@/lib/api';
 import { getCustomerToken } from '@/lib/auth';
 import NotFound from '@/pages/NotFound';
-import { badgeToneClasses, type Product, type Review } from '@/components/candy-store/data';
+import { badgeToneClasses, getProductBadgeIds, type Product, type Review } from '@/components/candy-store/data';
 import { toast } from 'sonner';
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from '@/components/ui/carousel';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -28,7 +28,6 @@ function Stars({ count }: { count: number }) {
 }
 
 export default function ProductPage() {
-  const NONE_VALUE = '__none__';
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const cart = useCart();
@@ -51,9 +50,11 @@ export default function ProductPage() {
     return categories.find(c => c.id === primary) ?? null;
   }, [categories, product]);
 
-  const badge = useMemo(() => {
-    if (!product) return null;
-    return badges.find(b => b.id === product.badge && b.active) ?? null;
+  const productBadges = useMemo(() => {
+    if (!product) return [];
+    return getProductBadgeIds(product)
+      .map(id => badges.find(b => b.id === id && b.active))
+      .filter(Boolean);
   }, [badges, product]);
 
   const slides = useMemo(() => {
@@ -70,12 +71,7 @@ export default function ProductPage() {
     if (!product?.standardPackagingId) return null;
     return activePackaging.find(p => p.id === product.standardPackagingId) ?? null;
   }, [activePackaging, resolvedPackagingMode, product?.standardPackagingId]);
-  const packagingChoices = useMemo(() => {
-    return [
-      { id: NONE_VALUE, name: 'Без упаковки', price: 0, image: '', images: [] as string[] },
-      ...activePackaging,
-    ];
-  }, [activePackaging]);
+  const packagingChoices = useMemo(() => activePackaging, [activePackaging]);
 
   const related = useMemo(() => {
     if (!product) return [];
@@ -319,11 +315,11 @@ export default function ProductPage() {
 
           <div>
             <div className="flex flex-wrap items-center gap-2 mb-3">
-              {badge && (
-                <span className={`px-3 py-1 rounded-full text-xs font-bold font-display ${badgeToneClasses[badge.tone]}`}>
+              {productBadges.map(badge => (
+                <span key={badge.id} className={`px-3 py-1 rounded-full text-xs font-bold font-display ${badgeToneClasses[badge.tone]}`}>
                   {badge.label}
                 </span>
-              )}
+              ))}
               {category && (
                 <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-primary/10 text-primary">
                   <Tag size={12} />
@@ -389,12 +385,12 @@ export default function ProductPage() {
                       <CarouselContent className="-ml-3">
                         {packagingChoices.map(p => {
                           const imageUrl = getPackagingImage(p);
-                          const active = (selectedPackagingId || NONE_VALUE) === p.id;
+                          const active = selectedPackagingId === p.id;
                           return (
                             <CarouselItem key={p.id} className="pl-3 basis-[90px] sm:basis-[100px]">
                               <button
                                 type="button"
-                                onClick={() => setSelectedPackagingId(p.id === NONE_VALUE ? '' : p.id)}
+                                onClick={() => setSelectedPackagingId(p.id)}
                                 className={`w-full rounded-2xl border text-left p-2 transition ${
                                   active ? 'border-primary/60 bg-primary/10' : 'border-border bg-card hover:bg-muted/40'
                                 }`}
@@ -403,7 +399,7 @@ export default function ProductPage() {
                                   {imageUrl ? (
                                     <img src={imageUrl} alt="" className="w-full h-full object-cover" />
                                   ) : (
-                                    <span className="text-xs text-muted-foreground">Без упаковки</span>
+                                    <span className="text-xs text-muted-foreground">{p.name}</span>
                                   )}
                                 </div>
                                 <div className="mt-1 text-[11px] font-medium line-clamp-2">{p.name}</div>

@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { api } from '@/lib/api';
 import { getToken } from '@/lib/auth';
-import { products as defaultProducts, categories as defaultCategories, badges as defaultBadges, packagingOptions as defaultPackagingOptions, footerData, heroTextData, featureBlocks as defaultFeatureBlocks, aboutData, headerData, type FeatureBlock, type FooterData, type HeroTextData, type AboutData, type HeaderData, type Product, type Category, type Promo, type Badge, type PackagingOption, type PromoBanner } from './data';
+import { products as defaultProducts, categories as defaultCategories, badges as defaultBadges, packagingOptions as defaultPackagingOptions, footerData, heroTextData, featureBlocks as defaultFeatureBlocks, aboutData, headerData, getProductBadgeIds, type FeatureBlock, type FooterData, type HeroTextData, type AboutData, type HeaderData, type Product, type Category, type Promo, type Badge, type PackagingOption, type PromoBanner } from './data';
 
 export interface Article {
   id: number;
@@ -466,7 +466,14 @@ export function useStore() {
 
   const deleteBadge = useCallback((id: string) => {
     setBadges(prev => prev.filter(b => b.id !== id));
-    setProducts(prev => prev.map(p => p.badge === id ? { ...p, badge: undefined } : p));
+    setProducts(prev => prev.map(p => {
+      const nextIds = getProductBadgeIds(p).filter(x => x !== id);
+      return {
+        ...p,
+        badge: nextIds.join(',') || undefined,
+        badgeIds: nextIds.length ? nextIds : undefined,
+      };
+    }));
   }, []);
 
   // Promos
