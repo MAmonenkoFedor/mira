@@ -33,7 +33,7 @@ export default function Products({
   initialBadge,
   initialSort,
 }: ProductsProps) {
-  const { products, badges } = useStore();
+  const { products, badges, categories } = useStore();
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortKey>('popular');
   const [badgeFilter, setBadgeFilter] = useState<BadgeFilter>('all');
@@ -119,6 +119,10 @@ export default function Products({
     if (!activeCategory) return groups;
     return groups.filter(group => group.category.id === activeCategory);
   }, [layout, groupedCategories, baseList, getCategories, activeCategory]);
+  const title = useMemo(() => {
+    if (!applyCategoryFilter || !activeCategory) return 'Ассортимент';
+    return categories.find(c => c.id === activeCategory)?.name || 'Ассортимент';
+  }, [applyCategoryFilter, activeCategory, categories]);
 
   const handleAdd = useMemo(() => {
     return (product: Product, packagingId?: string | null) => onAddToCart(product, 1, packagingId);
@@ -128,7 +132,7 @@ export default function Products({
     <section id="products" className="py-12 md:py-16 candy-pattern">
       <div className="container">
         <h2 className="font-display text-2xl md:text-3xl font-bold text-center mb-8 reveal">
-          Ассортимент
+          {title}
         </h2>
 
         {layout === 'grouped' ? (
