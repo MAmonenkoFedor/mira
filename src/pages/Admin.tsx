@@ -364,6 +364,7 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
   const [badgeFilter, setBadgeFilter] = useState('all');
   const [sort, setSort] = useState<'popular' | 'name' | 'price_asc' | 'price_desc'>('popular');
   const [showInactive, setShowInactive] = useState(false);
+  const [viewFilter, setViewFilter] = useState<'all' | 'set' | 'single' | 'mixed' | 'inactive'>('all');
   const [page, setPage] = useState(1);
   const [showQuickNav, setShowQuickNav] = useState(false);
   const filtersRef = useRef<HTMLDivElement | null>(null);
@@ -395,6 +396,16 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
       : (anyP?.category ? [String(anyP.category)] : []);
     return list;
   };
+  const getProductKind = useCallback((p: Product) => {
+    const ids = getCategories(p);
+    if (!ids.length) return 'mixed';
+    const groups = new Set(ids.map(id => categoriesById.get(id)?.group).filter(Boolean));
+    if (groups.size === 1) {
+      if (groups.has('set')) return 'set';
+      if (groups.has('single')) return 'single';
+    }
+    return 'mixed';
+  }, [categoriesById]);
 
   const filtered = useMemo(() => {
     let list = [...store.products];
@@ -421,6 +432,11 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
         return p.name.toLowerCase().includes(q) || String(p.id).includes(q) || sku.includes(q);
       });
     }
+    if (viewFilter === 'inactive') {
+      list = list.filter(p => p.active === false);
+    } else if (viewFilter !== 'all') {
+      list = list.filter(p => getProductKind(p) === viewFilter);
+    }
 
     switch (sort) {
       case 'name':
@@ -437,11 +453,11 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
     }
 
     return list;
-  }, [store.products, showInactive, categoryFilter, badgeFilter, search, sort]);
+  }, [store.products, showInactive, categoryFilter, badgeFilter, search, sort, viewFilter, getProductKind]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, categoryFilter, badgeFilter, sort, showInactive, store.products.length]);
+  }, [search, categoryFilter, badgeFilter, sort, showInactive, store.products.length, viewFilter]);
   useEffect(() => {
     const onScroll = () => setShowQuickNav(window.scrollY > 700);
     window.addEventListener('scroll', onScroll, { passive: true });
@@ -497,7 +513,7 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
             </select>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => { setSearch(''); setCategoryFilter('all'); setBadgeFilter('all'); setSort('popular'); setShowInactive(false); }}
+            <button onClick={() => { setSearch(''); setCategoryFilter('all'); setBadgeFilter('all'); setSort('popular'); setShowInactive(false); setViewFilter('all'); }}
               className="h-10 px-3 rounded-xl text-sm border border-border text-muted-foreground hover:bg-muted transition-colors flex items-center gap-2">
               <RotateCcw size={14} /> Сбросить
             </button>
@@ -512,23 +528,64 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
         </div>
       </div>
 
+      <div className="mb-3 flex flex-wrap gap-2">
+        {[
+          { key: 'all', label: 'Все товары' },
+          { key: 'set', label: 'Только наборы' },
+          { key: 'single', label: 'Только штучные' },
+          { key: 'mixed', label: 'Смешанные' },
+          { key: 'inactive', label: 'Снятые' },
+        ].map(item => (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() => setViewFilter(item.key as typeof viewFilter)}
+            className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${
+              viewFilter === item.key
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-card text-foreground border-border hover:bg-muted'
+            }`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
       {(creating || editing) && (
-        <ProductForm
-          product={editing}
-          categories={store.categories}
-          badges={store.badges}
-          packagingOptions={store.packagingOptions}
-          onSave={async (data) => {
-            try {
-              if (editing) { await store.updateProduct(editing.id, data); toast.success('Товар обновлён'); }
-              else { await store.addProduct(data as Omit<Product, 'id'>); toast.success('Товар добавлен'); }
-              setEditing(null); setCreating(false);
-            } catch (err) {
-              toast.error(getFriendlyActionError(err, 'Не удалось сохранить товар'));
-            }
-          }}
-          onCancel={() => { setEditing(null); setCreating(false); }}
-        />
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px] p-4 sm:p-6 overflow-y-auto">
+          <div className="max-w-5xl mx-auto">
+            <div className="bg-background rounded-2xl border border-border/40 shadow-xl p-4 sm:p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="font-display font-semibold text-base">
+                  {editing ? `Редактирование: ${editing.name}` : 'Новый товар'}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setEditing(null); setCreating(false); }}
+                  className="p-2 rounded-xl hover:bg-muted text-muted-foreground"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <ProductForm
+                product={editing}
+                categories={store.categories}
+                badges={store.badges}
+                packagingOptions={store.packagingOptions}
+                onSave={async (data) => {
+                  try {
+                    if (editing) { await store.updateProduct(editing.id, data); toast.success('Товар обновлён'); }
+                    else { await store.addProduct(data as Omit<Product, 'id'>); toast.success('Товар добавлен'); }
+                    setEditing(null); setCreating(false);
+                  } catch (err) {
+                    toast.error(getFriendlyActionError(err, 'Не удалось сохранить товар'));
+                  }
+                }}
+                onCancel={() => { setEditing(null); setCreating(false); }}
+              />
+            </div>
+          </div>
+        </div>
       )}
 
       <div className="grid gap-3">
@@ -555,12 +612,17 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
                 })}
               </div>
               <div className="text-xs text-muted-foreground">
+                {`${p.price} ₽ · id: ${p.id}${p.sku ? ` · ${p.sku}` : ''}`}
+              </div>
+              <div className="mt-1 flex flex-wrap gap-1.5">
                 {(() => {
                   const list = getCategories(p);
-                  const labels = list.map(getCategoryPathLabel);
-                  const shown = labels.slice(0, 2).join(', ');
-                  const more = labels.length > 2 ? ` +${labels.length - 2}` : '';
-                  return `${p.price} ₽ · ${shown || '—'}${more} · id: ${p.id}${p.sku ? ` · ${p.sku}` : ''}`;
+                  if (!list.length) return <span className="text-[11px] text-muted-foreground">Категории не заданы</span>;
+                  return list.map(id => (
+                    <span key={`${p.id}-cat-${id}`} className="px-2 py-0.5 rounded-full text-[11px] bg-muted text-muted-foreground">
+                      {getCategoryPathLabel(id)}
+                    </span>
+                  ));
                 })()}
               </div>
             </div>
@@ -1289,6 +1351,7 @@ function ProductForm({ product, categories: cats, badges, packagingOptions, onSa
     standardPackagingId: product?.standardPackagingId || '',
   });
   const set = <K extends keyof ProductFormState>(k: K, v: ProductFormState[K]) => setForm(f => ({ ...f, [k]: v }));
+  const [categorySearch, setCategorySearch] = useState('');
   const toggleCategory = (id: string) => {
     setForm(prev => {
       const has = prev.categories.includes(id);
@@ -1303,6 +1366,36 @@ function ProductForm({ product, categories: cats, badges, packagingOptions, onSa
       return { ...prev, badgeIds: next };
     });
   };
+  const categoriesById = useMemo(() => new Map(cats.map(c => [c.id, c])), [cats]);
+  const getCategoryPathLabel = useCallback((id: string) => {
+    const parts = id.split('/').filter(Boolean);
+    if (!parts.length) return id;
+    const names: string[] = [];
+    for (let i = 0; i < parts.length; i += 1) {
+      const partialId = parts.slice(0, i + 1).join('/');
+      names.push(categoriesById.get(partialId)?.name || parts[i]);
+    }
+    return names.join(' / ');
+  }, [categoriesById]);
+  const categoriesSorted = useMemo(() => {
+    return [...cats]
+      .map(c => ({ ...c, pathLabel: getCategoryPathLabel(c.id) }))
+      .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'ru'));
+  }, [cats, getCategoryPathLabel]);
+  const filteredCategories = useMemo(() => {
+    const q = categorySearch.trim().toLowerCase();
+    if (!q) return categoriesSorted;
+    return categoriesSorted.filter(c => (
+      c.pathLabel.toLowerCase().includes(q) ||
+      c.id.toLowerCase().includes(q) ||
+      c.name.toLowerCase().includes(q)
+    ));
+  }, [categoriesSorted, categorySearch]);
+  const selectedCategories = useMemo(() => {
+    return [...form.categories]
+      .map(id => ({ id, pathLabel: getCategoryPathLabel(id), emoji: categoriesById.get(id)?.emoji || '' }))
+      .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'ru'));
+  }, [form.categories, getCategoryPathLabel, categoriesById]);
 
   useEffect(() => {
     if (form.packagingMode !== 'standard') return;
@@ -1376,7 +1469,7 @@ function ProductForm({ product, categories: cats, badges, packagingOptions, onSa
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-card rounded-2xl p-5 border border-border/40 shadow-sm mb-6 grid gap-4 sm:grid-cols-2">
+    <form onSubmit={handleSubmit} className="bg-card rounded-2xl p-5 border border-border/40 shadow-sm grid gap-4 sm:grid-cols-2">
       <div className="sm:col-span-2">
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Название</label>
         <input value={form.name} onChange={e => set('name', e.target.value)} maxLength={200} className="admin-input" placeholder="Название товара" />
@@ -1392,8 +1485,28 @@ function ProductForm({ product, categories: cats, badges, packagingOptions, onSa
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Категории</label>
         <div className="admin-input min-h-[9.5rem] p-2 overflow-y-auto">
+          {selectedCategories.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {selectedCategories.map(c => (
+                <button
+                  key={`selected-${c.id}`}
+                  type="button"
+                  onClick={() => toggleCategory(c.id)}
+                  className="px-2 py-1 rounded-full text-[11px] bg-primary/10 text-primary border border-primary/20"
+                >
+                  {c.emoji ? `${c.emoji} ` : ''}{c.pathLabel} ×
+                </button>
+              ))}
+            </div>
+          )}
+          <input
+            value={categorySearch}
+            onChange={e => setCategorySearch(e.target.value)}
+            className="admin-input mb-2 h-9"
+            placeholder="Поиск по названию, пути или ID"
+          />
           <div className="flex flex-wrap gap-2">
-            {cats.map(c => {
+            {filteredCategories.map(c => {
               const selected = form.categories.includes(c.id);
               return (
                 <button
@@ -1406,14 +1519,14 @@ function ProductForm({ product, categories: cats, badges, packagingOptions, onSa
                       : 'bg-muted/60 text-foreground border-border hover:bg-muted'
                   }`}
                 >
-                  {c.emoji ? `${c.emoji} ` : ''}{c.name}
+                  {c.emoji ? `${c.emoji} ` : ''}{c.pathLabel}
                 </button>
               );
             })}
           </div>
         </div>
         <div className="text-[11px] text-muted-foreground mt-1">
-          Выберите одну или несколько категорий
+          Выберите одну или несколько категорий, ориентируясь по полному пути
         </div>
       </div>
       <div>
@@ -1749,6 +1862,8 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
   const [editing, setEditing] = useState<Category | null>(null);
   const [creating, setCreating] = useState(false);
   const [reorderBusy, setReorderBusy] = useState(false);
+  const [groupBusyId, setGroupBusyId] = useState<string | null>(null);
+  const [listFilter, setListFilter] = useState<'all' | 'root' | 'nested' | 'set' | 'single'>('all');
 
   const colorOptions = [
     { value: 'candy-pink', label: '🩷 Розовый' },
@@ -1769,6 +1884,47 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
       })
       .map(x => x.c);
   }, [store.categories]);
+  const categoriesById = useMemo(() => {
+    return new Map(store.categories.map(c => [c.id, c]));
+  }, [store.categories]);
+  const getPathLabel = useCallback((id: string) => {
+    const parts = id.split('/').filter(Boolean);
+    if (!parts.length) return id;
+    const names: string[] = [];
+    for (let i = 0; i < parts.length; i += 1) {
+      const partialId = parts.slice(0, i + 1).join('/');
+      names.push(categoriesById.get(partialId)?.name || parts[i]);
+    }
+    return names.join(' / ');
+  }, [categoriesById]);
+  const categoriesSorted = useMemo(() => {
+    return [...store.categories]
+      .map(c => ({ ...c, pathLabel: getPathLabel(c.id) }))
+      .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'ru'));
+  }, [store.categories, getPathLabel]);
+  const childrenByParent = useMemo(() => {
+    const map = new Map<string, Category[]>();
+    for (const c of store.categories) {
+      const parentId = c.id.includes('/') ? c.id.split('/').slice(0, -1).join('/') : '';
+      if (!parentId) continue;
+      const list = map.get(parentId) || [];
+      list.push(c);
+      map.set(parentId, list);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => getPathLabel(a.id).localeCompare(getPathLabel(b.id), 'ru'));
+    }
+    return map;
+  }, [store.categories, getPathLabel]);
+  const visibleCategories = useMemo(() => {
+    return categoriesSorted.filter(c => {
+      if (listFilter === 'root') return !c.id.includes('/');
+      if (listFilter === 'nested') return c.id.includes('/');
+      if (listFilter === 'set') return c.group === 'set';
+      if (listFilter === 'single') return c.group === 'single';
+      return true;
+    });
+  }, [categoriesSorted, listFilter]);
 
   return (
     <div>
@@ -1778,21 +1934,39 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
       </button>
 
       {(creating || editing) && (
-        <CategoryForm
-          category={editing}
-          categories={store.categories}
-          colorOptions={colorOptions}
-          onSave={async (data) => {
-            try {
-              if (editing) { await store.updateCategory(editing.id, data); toast.success('Категория обновлена'); }
-              else { await store.addCategory(data as Omit<Category, 'id'> & { id?: string }); toast.success('Категория добавлена'); }
-              setEditing(null); setCreating(false);
-            } catch (err) {
-              toast.error(getFriendlyActionError(err, 'Не удалось сохранить категорию'));
-            }
-          }}
-          onCancel={() => { setEditing(null); setCreating(false); }}
-        />
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px] p-4 sm:p-6 overflow-y-auto">
+          <div className="max-w-4xl mx-auto">
+            <div className="bg-background rounded-2xl border border-border/40 shadow-xl p-4 sm:p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="font-display font-semibold text-base">
+                  {editing ? `Редактирование: ${editing.name}` : 'Новая категория'}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setEditing(null); setCreating(false); }}
+                  className="p-2 rounded-xl hover:bg-muted text-muted-foreground"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <CategoryForm
+                category={editing}
+                categories={store.categories}
+                colorOptions={colorOptions}
+                onSave={async (data) => {
+                  try {
+                    if (editing) { await store.updateCategory(editing.id, data); toast.success('Категория обновлена'); }
+                    else { await store.addCategory(data as Omit<Category, 'id'> & { id?: string }); toast.success('Категория добавлена'); }
+                    setEditing(null); setCreating(false);
+                  } catch (err) {
+                    toast.error(getFriendlyActionError(err, 'Не удалось сохранить категорию'));
+                  }
+                }}
+                onCancel={() => { setEditing(null); setCreating(false); }}
+              />
+            </div>
+          </div>
+        </div>
       )}
 
       <div className="bg-card rounded-2xl p-4 border border-border/40 shadow-sm mb-4">
@@ -1858,13 +2032,103 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
         </div>
       </div>
 
+      <div className="mb-3 flex flex-wrap gap-2">
+        {[
+          { key: 'all', label: 'Все' },
+          { key: 'root', label: 'Корневые' },
+          { key: 'nested', label: 'Вложенные' },
+          { key: 'set', label: 'Наборы' },
+          { key: 'single', label: 'Штучные' },
+        ].map(item => (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() => setListFilter(item.key as typeof listFilter)}
+            className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${
+              listFilter === item.key
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-card text-foreground border-border hover:bg-muted'
+            }`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
       <div className="grid gap-3">
-        {store.categories.map(c => (
-          <div key={c.id} className="flex items-center gap-4 bg-card rounded-2xl p-4 border border-border/40 shadow-sm">
+        {visibleCategories.map(c => {
+          const depth = c.id.split('/').length - 1;
+          const parentId = c.id.includes('/') ? c.id.split('/').slice(0, -1).join('/') : '';
+          const parent = parentId ? categoriesById.get(parentId) : null;
+          const children = childrenByParent.get(c.id) || [];
+          return (
+          <div
+            key={c.id}
+            className="flex items-center gap-4 bg-card rounded-2xl p-4 border border-border/40 shadow-sm"
+            style={{ marginLeft: `${depth * 16}px` }}
+          >
             <span className="text-2xl w-10 h-10 rounded-xl flex items-center justify-center bg-muted">{c.emoji}</span>
             <div className="flex-1 min-w-0">
-              <span className="font-display font-semibold text-sm">{c.name}</span>
-              <span className="text-xs text-muted-foreground ml-2">id: {c.id}</span>
+              <div className="font-display font-semibold text-sm">{c.name}</div>
+              <div className="text-xs text-muted-foreground">id: {c.id}</div>
+              <div className="text-[11px] text-muted-foreground mt-1">{c.pathLabel}</div>
+              <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                <span className="px-2 py-0.5 rounded-full bg-muted">
+                  Родитель: {parent ? `${parent.emoji ? `${parent.emoji} ` : ''}${parent.name}` : 'нет'}
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-muted">
+                  Подкатегорий: {children.length}
+                </span>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                <span className="text-muted-foreground">Группа:</span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (groupBusyId || c.group === 'set') return;
+                    try {
+                      setGroupBusyId(c.id);
+                      await store.updateCategory(c.id, { group: 'set' });
+                      toast.success('Категория перенесена в "Наборы"');
+                    } catch (err) {
+                      toast.error(getFriendlyActionError(err, 'Не удалось изменить группу'));
+                    } finally {
+                      setGroupBusyId(null);
+                    }
+                  }}
+                  disabled={Boolean(groupBusyId) || c.group === 'set'}
+                  className={`px-2 py-0.5 rounded-full border transition-colors ${
+                    c.group === 'set'
+                      ? 'bg-primary/10 border-primary/30 text-primary'
+                      : 'border-border text-muted-foreground hover:bg-muted'
+                  } disabled:opacity-60`}
+                >
+                  Наборы
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (groupBusyId || c.group === 'single') return;
+                    try {
+                      setGroupBusyId(c.id);
+                      await store.updateCategory(c.id, { group: 'single' });
+                      toast.success('Категория перенесена в "Штучные товары"');
+                    } catch (err) {
+                      toast.error(getFriendlyActionError(err, 'Не удалось изменить группу'));
+                    } finally {
+                      setGroupBusyId(null);
+                    }
+                  }}
+                  disabled={Boolean(groupBusyId) || c.group === 'single'}
+                  className={`px-2 py-0.5 rounded-full border transition-colors ${
+                    c.group === 'single'
+                      ? 'bg-primary/10 border-primary/30 text-primary'
+                      : 'border-border text-muted-foreground hover:bg-muted'
+                  } disabled:opacity-60`}
+                >
+                  Штучные
+                </button>
+              </div>
               {(c.showOnHome || typeof c.homeOrder === 'number') && (
                 <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
                   {c.showOnHome && (
@@ -1896,7 +2160,11 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
               </button>
             </div>
           </div>
-        ))}
+        );
+        })}
+        {visibleCategories.length === 0 && (
+          <div className="text-sm text-muted-foreground">По выбранному фильтру категорий нет</div>
+        )}
       </div>
     </div>
   );
@@ -1952,6 +2220,17 @@ function CategoryForm({ category, categories, colorOptions, onSave, onCancel }: 
     return names.join(' / ');
   };
   const derivedId = (form.parentId ? `${form.parentId}/${form.slug}` : form.slug).trim();
+  const currentParent = useMemo(() => {
+    if (!form.parentId) return null;
+    return parentById.get(form.parentId) || null;
+  }, [form.parentId, parentById]);
+  const currentChildren = useMemo(() => {
+    const base = (category?.id || derivedId).trim();
+    if (!base) return [] as Category[];
+    return categories
+      .filter(c => c.id.startsWith(`${base}/`) && c.id.split('/').length === base.split('/').length + 1)
+      .sort((a, b) => getParentPathLabel(a.id).localeCompare(getParentPathLabel(b.id), 'ru'));
+  }, [categories, category?.id, derivedId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1978,7 +2257,7 @@ function CategoryForm({ category, categories, colorOptions, onSave, onCancel }: 
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-card rounded-2xl p-5 border border-border/40 shadow-sm mb-6 grid gap-4 sm:grid-cols-2">
+    <form onSubmit={handleSubmit} className="bg-card rounded-2xl p-5 border border-border/40 shadow-sm grid gap-4 sm:grid-cols-2">
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Родитель</label>
         <select
@@ -2032,6 +2311,15 @@ function CategoryForm({ category, categories, colorOptions, onSave, onCancel }: 
       <div className="sm:col-span-2">
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Полный ID</label>
         <input value={derivedId} readOnly className="admin-input bg-muted/40" />
+      </div>
+      <div className="sm:col-span-2 rounded-xl border border-border/40 bg-muted/20 p-3">
+        <div className="text-xs font-medium mb-2">Связи в иерархии</div>
+        <div className="text-xs text-muted-foreground">
+          Родитель: {currentParent ? `${currentParent.emoji ? `${currentParent.emoji} ` : ''}${getParentPathLabel(currentParent.id)}` : 'нет'}
+        </div>
+        <div className="text-xs text-muted-foreground mt-1">
+          Подкатегории: {currentChildren.length ? currentChildren.map(c => getParentPathLabel(c.id)).join(' · ') : 'нет'}
+        </div>
       </div>
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Эмодзи</label>
