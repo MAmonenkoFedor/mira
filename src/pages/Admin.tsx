@@ -7,7 +7,7 @@ import { api, resolveMediaUrl } from '@/lib/api';
 import { badgeToneSoftClasses, badgeToneClasses, getProductBadgeIds } from '@/components/candy-store/data';
 import type { Product, Category, Promo, PromoScope, Badge, BadgeTone, PackagingOption, Review, FeatureBlock } from '@/components/candy-store/data';
 
-type Tab = 'products' | 'categories' | 'packaging' | 'articles' | 'promos' | 'import' | 'hero' | 'badges' | 'orders' | 'header' | 'footer' | 'reviews' | 'benefits' | 'about';
+type Tab = 'products' | 'categories' | 'homeCategories' | 'packaging' | 'articles' | 'promos' | 'import' | 'hero' | 'badges' | 'orders' | 'header' | 'footer' | 'reviews' | 'benefits' | 'about';
 
 const getErrorStatus = (err: unknown): number | null => {
   if (!(err instanceof Error)) return null;
@@ -211,6 +211,7 @@ export default function Admin() {
   const tabs: { key: Tab; icon: typeof Package; label: string; count: number }[] = [
     { key: 'products', icon: Package, label: 'Товары', count: store.products.length },
     { key: 'categories', icon: Tag, label: 'Категории', count: store.categories.length },
+    { key: 'homeCategories', icon: Tag, label: 'Категории на главной', count: store.categories.filter(c => c.showOnHome).length },
     { key: 'packaging', icon: Gift, label: 'Упаковка', count: store.packagingOptions.length },
     { key: 'badges', icon: BadgeCheck, label: 'Бейджи', count: store.badges.length },
     { key: 'articles', icon: FileText, label: 'Статьи', count: store.articles.length },
@@ -335,6 +336,7 @@ export default function Admin() {
 
               {tab === 'products' && <ProductsTab store={store} />}
               {tab === 'categories' && <CategoriesTab store={store} />}
+              {tab === 'homeCategories' && <HomeCategoriesTab store={store} />}
               {tab === 'packaging' && <PackagingTab store={store} />}
               {tab === 'badges' && <BadgesTab store={store} />}
               {tab === 'articles' && <ArticlesTab store={store} />}
@@ -1861,7 +1863,6 @@ function PackagingForm({ option, onSave, onCancel }: {
 function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
   const [editing, setEditing] = useState<Category | null>(null);
   const [creating, setCreating] = useState(false);
-  const [reorderBusy, setReorderBusy] = useState(false);
   const [groupBusyId, setGroupBusyId] = useState<string | null>(null);
   const [listFilter, setListFilter] = useState<'all' | 'root' | 'nested' | 'set' | 'single'>('all');
 
@@ -1872,18 +1873,6 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
     { value: 'candy-blue', label: '💙 Голубой' },
     { value: 'candy-banana', label: '💛 Банановый' },
   ];
-  const homeOrderList = useMemo(() => {
-    const list = store.categories.filter(c => c.showOnHome);
-    return list
-      .map((c, index) => ({ c, index }))
-      .sort((a, b) => {
-        const ao = typeof a.c.homeOrder === 'number' ? a.c.homeOrder : Number.POSITIVE_INFINITY;
-        const bo = typeof b.c.homeOrder === 'number' ? b.c.homeOrder : Number.POSITIVE_INFINITY;
-        if (ao !== bo) return ao - bo;
-        return a.c.name.localeCompare(b.c.name, 'ru') || a.index - b.index;
-      })
-      .map(x => x.c);
-  }, [store.categories]);
   const categoriesById = useMemo(() => {
     return new Map(store.categories.map(c => [c.id, c]));
   }, [store.categories]);
@@ -1925,7 +1914,6 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
       return true;
     });
   }, [categoriesSorted, listFilter]);
-
   return (
     <div>
       <button onClick={() => { setCreating(true); setEditing(null); }}
@@ -1968,69 +1956,6 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
           </div>
         </div>
       )}
-
-      <div className="bg-card rounded-2xl p-4 border border-border/40 shadow-sm mb-4">
-        <div className="font-display font-semibold mb-3">Порядок на главной</div>
-        <div className="grid gap-2">
-          {homeOrderList.map((c, i) => (
-            <div key={c.id} className="flex items-center gap-3 rounded-xl border border-border/40 bg-muted/20 px-3 py-2">
-              <span className="text-xs text-muted-foreground w-5 text-center">{i + 1}</span>
-              <span className="text-lg">{c.emoji}</span>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium truncate">{c.name}</div>
-                <div className="text-[11px] text-muted-foreground truncate">{c.id}</div>
-              </div>
-              <div className="flex gap-1.5">
-                <button
-                  onClick={async () => {
-                    if (reorderBusy || i === 0) return;
-                    try {
-                      setReorderBusy(true);
-                      const next = [...homeOrderList];
-                      [next[i - 1], next[i]] = [next[i], next[i - 1]];
-                      await Promise.all(next.map((item, idx) => store.updateCategory(item.id, { homeOrder: idx + 1 })));
-                    } catch (err) {
-                      const code = err instanceof Error ? err.message : '';
-                      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-                      else toast.error('Не удалось обновить порядок');
-                    } finally {
-                      setReorderBusy(false);
-                    }
-                  }}
-                  disabled={reorderBusy || i === 0}
-                  className="p-2 rounded-xl hover:bg-muted text-muted-foreground disabled:opacity-40"
-                >
-                  <ArrowUp size={15} />
-                </button>
-                <button
-                  onClick={async () => {
-                    if (reorderBusy || i === homeOrderList.length - 1) return;
-                    try {
-                      setReorderBusy(true);
-                      const next = [...homeOrderList];
-                      [next[i + 1], next[i]] = [next[i], next[i + 1]];
-                      await Promise.all(next.map((item, idx) => store.updateCategory(item.id, { homeOrder: idx + 1 })));
-                    } catch (err) {
-                      const code = err instanceof Error ? err.message : '';
-                      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-                      else toast.error('Не удалось обновить порядок');
-                    } finally {
-                      setReorderBusy(false);
-                    }
-                  }}
-                  disabled={reorderBusy || i === homeOrderList.length - 1}
-                  className="p-2 rounded-xl hover:bg-muted text-muted-foreground disabled:opacity-40"
-                >
-                  <ArrowDown size={15} />
-                </button>
-              </div>
-            </div>
-          ))}
-          {homeOrderList.length === 0 && (
-            <div className="text-sm text-muted-foreground">Нет категорий, показываемых на главной</div>
-          )}
-        </div>
-      </div>
 
       <div className="mb-3 flex flex-wrap gap-2">
         {[
@@ -2165,6 +2090,140 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
         {visibleCategories.length === 0 && (
           <div className="text-sm text-muted-foreground">По выбранному фильтру категорий нет</div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function HomeCategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
+  const [reorderBusy, setReorderBusy] = useState(false);
+  const [sectionToggleBusyId, setSectionToggleBusyId] = useState<string | null>(null);
+
+  const homeOrderList = useMemo(() => {
+    const list = store.categories.filter(c => c.showOnHome);
+    return list
+      .map((c, index) => ({ c, index }))
+      .sort((a, b) => {
+        const ao = typeof a.c.homeOrder === 'number' ? a.c.homeOrder : Number.POSITIVE_INFINITY;
+        const bo = typeof b.c.homeOrder === 'number' ? b.c.homeOrder : Number.POSITIVE_INFINITY;
+        if (ao !== bo) return ao - bo;
+        return a.c.name.localeCompare(b.c.name, 'ru') || a.index - b.index;
+      })
+      .map(x => x.c);
+  }, [store.categories]);
+  const homeSectionItems = useMemo(() => ([
+    { id: 'categories', label: 'Категории' },
+    { id: 'products', label: 'Ассортимент' },
+    { id: 'benefits', label: 'Преимущества' },
+    { id: 'reviews', label: 'Отзывы' },
+    { id: 'articles', label: 'Статьи' },
+    { id: 'promo', label: 'Промо-баннер' },
+    { id: 'contact', label: 'Форма контакта' },
+  ]), []);
+  const hiddenSectionSet = useMemo(() => new Set(store.header?.hiddenSections || []), [store.header?.hiddenSections]);
+
+  return (
+    <div className="grid gap-4">
+      <div className="bg-card rounded-2xl p-4 border border-border/40 shadow-sm">
+        <div className="font-display font-semibold mb-3">Секции на главной</div>
+        <div className="grid gap-2">
+          {homeSectionItems.map(section => {
+            const isHidden = hiddenSectionSet.has(section.id);
+            return (
+              <div key={section.id} className="flex items-center justify-between rounded-xl border border-border/40 bg-muted/10 px-3 py-2">
+                <div className="text-sm font-medium">{section.label}</div>
+                <button
+                  onClick={async () => {
+                    if (sectionToggleBusyId) return;
+                    try {
+                      setSectionToggleBusyId(section.id);
+                      const next = [...hiddenSectionSet];
+                      const index = next.indexOf(section.id);
+                      if (index >= 0) next.splice(index, 1);
+                      else next.push(section.id);
+                      await store.updateHeader({ hiddenSections: next });
+                      toast.success(isHidden ? 'Секция показана на главной' : 'Секция скрыта с главной');
+                    } catch (err) {
+                      toast.error(getFriendlyActionError(err, 'Не удалось обновить видимость секции'));
+                    } finally {
+                      setSectionToggleBusyId(null);
+                    }
+                  }}
+                  disabled={Boolean(sectionToggleBusyId)}
+                  className={`px-3 py-1.5 rounded-xl text-xs border transition-colors disabled:opacity-40 ${
+                    isHidden
+                      ? 'border-border text-muted-foreground hover:bg-muted'
+                      : 'border-primary/30 text-primary hover:bg-primary/10'
+                  }`}
+                >
+                  {isHidden ? 'Скрыто' : 'Показано'}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="bg-card rounded-2xl p-4 border border-border/40 shadow-sm">
+        <div className="font-display font-semibold mb-3">Порядок категорий на главной</div>
+        <div className="grid gap-2">
+          {homeOrderList.map((c, i) => (
+            <div key={c.id} className="flex items-center gap-3 rounded-xl border border-border/40 bg-muted/20 px-3 py-2">
+              <span className="text-xs text-muted-foreground w-5 text-center">{i + 1}</span>
+              <span className="text-lg">{c.emoji}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate">{c.name}</div>
+                <div className="text-[11px] text-muted-foreground truncate">{c.id}</div>
+              </div>
+              <div className="flex gap-1.5">
+                <button
+                  onClick={async () => {
+                    if (reorderBusy || i === 0) return;
+                    try {
+                      setReorderBusy(true);
+                      const next = [...homeOrderList];
+                      [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                      await Promise.all(next.map((item, idx) => store.updateCategory(item.id, { homeOrder: idx + 1 })));
+                    } catch (err) {
+                      const code = err instanceof Error ? err.message : '';
+                      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                      else toast.error('Не удалось обновить порядок');
+                    } finally {
+                      setReorderBusy(false);
+                    }
+                  }}
+                  disabled={reorderBusy || i === 0}
+                  className="p-2 rounded-xl hover:bg-muted text-muted-foreground disabled:opacity-40"
+                >
+                  <ArrowUp size={15} />
+                </button>
+                <button
+                  onClick={async () => {
+                    if (reorderBusy || i === homeOrderList.length - 1) return;
+                    try {
+                      setReorderBusy(true);
+                      const next = [...homeOrderList];
+                      [next[i + 1], next[i]] = [next[i], next[i + 1]];
+                      await Promise.all(next.map((item, idx) => store.updateCategory(item.id, { homeOrder: idx + 1 })));
+                    } catch (err) {
+                      const code = err instanceof Error ? err.message : '';
+                      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                      else toast.error('Не удалось обновить порядок');
+                    } finally {
+                      setReorderBusy(false);
+                    }
+                  }}
+                  disabled={reorderBusy || i === homeOrderList.length - 1}
+                  className="p-2 rounded-xl hover:bg-muted text-muted-foreground disabled:opacity-40"
+                >
+                  <ArrowDown size={15} />
+                </button>
+              </div>
+            </div>
+          ))}
+          {homeOrderList.length === 0 && (
+            <div className="text-sm text-muted-foreground">Нет категорий, показываемых на главной</div>
+          )}
+        </div>
       </div>
     </div>
   );

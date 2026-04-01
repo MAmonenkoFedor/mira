@@ -157,6 +157,8 @@ const Index = () => {
       })
       .map(({ c }) => c);
   }, [store.categories, productCategoryIds]);
+  const hiddenSections = useMemo(() => new Set(store.header?.hiddenSections || []), [store.header?.hiddenSections]);
+  const isSectionVisible = useCallback((sectionId: string) => !hiddenSections.has(sectionId), [hiddenSections]);
 
   return (
     <div ref={revealRef} className="min-h-screen">
@@ -164,24 +166,28 @@ const Index = () => {
 
       <main>
         <Hero />
-        <Categories
-          items={homeCategories}
-          enableHierarchy={false}
-          activeCategory={activeCategory}
-          onSelect={handleHomeCategorySelect}
-        />
-        <Products
-          activeCategory={activeCategory}
-          onAddToCart={handleAddToCart}
-          layout="grouped"
-          groupedCategories={homeCategories}
-          applyCategoryFilter={false}
-        />
-        <Reviews />
-        <Benefits />
-        <Articles />
-        <PromoBanner onApplyPromo={handlePromoApply} />
-        <ContactForm />
+        {isSectionVisible('categories') && (
+          <Categories
+            items={homeCategories}
+            enableHierarchy={false}
+            activeCategory={activeCategory}
+            onSelect={handleHomeCategorySelect}
+          />
+        )}
+        {isSectionVisible('products') && (
+          <Products
+            activeCategory={activeCategory}
+            onAddToCart={handleAddToCart}
+            layout="grouped"
+            groupedCategories={homeCategories}
+            applyCategoryFilter={false}
+          />
+        )}
+        {isSectionVisible('benefits') && <Benefits />}
+        {isSectionVisible('reviews') && <Reviews />}
+        {isSectionVisible('articles') && <Articles />}
+        {isSectionVisible('promo') && <PromoBanner onApplyPromo={handlePromoApply} />}
+        {isSectionVisible('contact') && <ContactForm />}
       </main>
 
       <Footer />

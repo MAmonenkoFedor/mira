@@ -132,11 +132,15 @@ const normalizeAbout = (input: unknown): AboutData => {
 
 const normalizeHeader = (input: unknown): HeaderData => {
   const data = input && typeof input === 'object' ? (input as Partial<HeaderData>) : {};
+  const hiddenSections = Array.isArray(data.hiddenSections)
+    ? data.hiddenSections.map(v => String(v).trim()).filter(Boolean)
+    : headerData.hiddenSections;
   return {
     brandName: typeof data.brandName === 'string' && data.brandName.trim() ? data.brandName.trim() : headerData.brandName,
     brandTextColor: typeof data.brandTextColor === 'string' && data.brandTextColor.trim() ? data.brandTextColor.trim() : headerData.brandTextColor,
     menuButtonBg: typeof data.menuButtonBg === 'string' && data.menuButtonBg.trim() ? data.menuButtonBg.trim() : headerData.menuButtonBg,
     menuButtonTextColor: typeof data.menuButtonTextColor === 'string' && data.menuButtonTextColor.trim() ? data.menuButtonTextColor.trim() : headerData.menuButtonTextColor,
+    hiddenSections,
   };
 };
 
@@ -529,13 +533,13 @@ export function useStore() {
     setFooter(data);
   }, [apiReady]);
 
-  const updateHeader = useCallback(async (data: HeaderData) => {
+  const updateHeader = useCallback(async (data: Partial<HeaderData>) => {
     if (apiReady) {
       try {
         await api.updateHeader(data);
       } catch {}
     }
-    setHeader(normalizeHeader(data));
+    setHeader(prev => normalizeHeader({ ...prev, ...data }));
   }, [apiReady]);
 
   const updateHeroText = useCallback(async (data: HeroTextData) => {

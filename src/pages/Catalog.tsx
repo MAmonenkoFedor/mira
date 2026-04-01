@@ -15,6 +15,7 @@ const Catalog = () => {
   const { products, categories } = useStore();
   const navigate = useNavigate();
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [expandedPath, setExpandedPath] = useState<string[]>([]);
   const [searchParams] = useSearchParams();
 
   const handleAddToCart = useCallback((product: Product, qty = 1, packagingId?: string | null) => {
@@ -153,6 +154,33 @@ const Catalog = () => {
       document.getElementById('products')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 100);
   }, []);
+  const handleTreeNodeClick = useCallback((id: string, hasChildren: boolean, ancestorIds: string[]) => {
+    if (hasChildren) {
+      const nextPath = [...ancestorIds, id];
+      setExpandedPath(prev => (
+        prev.length === nextPath.length && prev.every((v, idx) => v === nextPath[idx])
+          ? ancestorIds
+          : nextPath
+      ));
+      selectCategory(id, false);
+      return;
+    }
+    selectCategory(id);
+  }, [selectCategory]);
+
+  useEffect(() => {
+    if (!activeCategory) {
+      setExpandedPath([]);
+      return;
+    }
+    const parts = activeCategory.split('/').filter(Boolean);
+    if (parts.length <= 1) return;
+    const nextPath: string[] = [];
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      nextPath.push(parts.slice(0, i + 1).join('/'));
+    }
+    setExpandedPath(nextPath);
+  }, [activeCategory]);
 
   const activeTopId = activeCategory ? activeCategory.split('/')[0] : null;
   const setIds = useMemo(() => new Set(['gift', 'chocolate', 'truffles', 'asian', 'cookies']), []);
@@ -178,20 +206,18 @@ const Catalog = () => {
             <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6 items-start">
               <aside className="hidden lg:block sticky top-24">
                 <div className="rounded-3xl border bg-card/70 backdrop-blur p-4">
-                  <div className="font-display font-semibold mb-3">Категории</div>
                   <button
                     onClick={() => selectCategory(null)}
                     className={`w-full text-left px-3 py-2 rounded-2xl text-sm transition ${!activeCategory ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50'}`}
                   >
                     Все товары
                   </button>
-                  <div className="mt-3 text-xs uppercase tracking-wide text-muted-foreground">Наборы</div>
-                  <div className="mt-2 space-y-1">
+                  <div className="mt-3 space-y-1">
                     {setNodes.map(node => {
-                      const renderNode = (n: Node, depth: number) => (
+                      const renderNode = (n: Node, depth: number, ancestorIds: string[] = []) => (
                         <div key={n.category.id}>
                           <button
-                            onClick={() => selectCategory(n.category.id)}
+                            onClick={() => handleTreeNodeClick(n.category.id, n.children.length > 0, ancestorIds)}
                             className={`w-full text-left rounded-2xl text-sm transition ${
                               (depth === 0 ? (activeTopId === n.category.id || activeCategory === n.category.id) : activeCategory === n.category.id)
                                 ? 'bg-primary/10 text-primary'
@@ -201,9 +227,9 @@ const Catalog = () => {
                           >
                             {n.category.emoji ? `${n.category.emoji} ` : ''}{n.category.name}
                           </button>
-                          {n.children.length > 0 && (
+                          {n.children.length > 0 && expandedPath.includes(n.category.id) && (
                             <div className="mt-1 space-y-1">
-                              {n.children.map(child => renderNode(child, depth + 1))}
+                              {n.children.map(child => renderNode(child, depth + 1, [...ancestorIds, n.category.id]))}
                             </div>
                           )}
                         </div>
@@ -212,13 +238,12 @@ const Catalog = () => {
                       return renderNode(node, 0);
                     })}
                   </div>
-                  <div className="mt-4 text-xs uppercase tracking-wide text-muted-foreground">Штучные товары</div>
-                  <div className="mt-2 space-y-1">
+                  <div className="mt-4 space-y-1">
                     {singleNodes.map(node => {
-                      const renderNode = (n: Node, depth: number) => (
+                      const renderNode = (n: Node, depth: number, ancestorIds: string[] = []) => (
                         <div key={n.category.id}>
                           <button
-                            onClick={() => selectCategory(n.category.id)}
+                            onClick={() => handleTreeNodeClick(n.category.id, n.children.length > 0, ancestorIds)}
                             className={`w-full text-left rounded-2xl text-sm transition ${
                               (depth === 0 ? (activeTopId === n.category.id || activeCategory === n.category.id) : activeCategory === n.category.id)
                                 ? 'bg-primary/10 text-primary'
@@ -228,9 +253,9 @@ const Catalog = () => {
                           >
                             {n.category.emoji ? `${n.category.emoji} ` : ''}{n.category.name}
                           </button>
-                          {n.children.length > 0 && (
+                          {n.children.length > 0 && expandedPath.includes(n.category.id) && (
                             <div className="mt-1 space-y-1">
-                              {n.children.map(child => renderNode(child, depth + 1))}
+                              {n.children.map(child => renderNode(child, depth + 1, [...ancestorIds, n.category.id]))}
                             </div>
                           )}
                         </div>

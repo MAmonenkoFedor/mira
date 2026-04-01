@@ -115,6 +115,7 @@ export interface HeaderData {
   brandTextColor: string;
   menuButtonBg: string;
   menuButtonTextColor: string;
+  hiddenSections: string[];
 }
 
 export interface HeroTextData {
@@ -173,6 +174,7 @@ export const headerData: HeaderData = {
   brandTextColor: '#db2777',
   menuButtonBg: '#db2777',
   menuButtonTextColor: '#ffffff',
+  hiddenSections: [],
 };
 
 export const aboutData: AboutData = {
