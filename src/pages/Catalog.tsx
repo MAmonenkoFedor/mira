@@ -165,6 +165,7 @@ const Catalog = () => {
       selectCategory(id, false);
       return;
     }
+    setExpandedPath(ancestorIds);
     selectCategory(id);
   }, [selectCategory]);
 

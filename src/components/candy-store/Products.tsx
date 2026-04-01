@@ -120,8 +120,9 @@ export default function Products({
     return groups.filter(group => group.category.id === activeCategory);
   }, [layout, groupedCategories, baseList, getCategories, activeCategory]);
   const title = useMemo(() => {
-    if (!applyCategoryFilter || !activeCategory) return 'Ассортимент';
-    return categories.find(c => c.id === activeCategory)?.name || 'Ассортимент';
+    if (!applyCategoryFilter) return 'Ассортимент';
+    if (!activeCategory) return 'Все товары';
+    return categories.find(c => c.id === activeCategory)?.name || 'Все товары';
   }, [applyCategoryFilter, activeCategory, categories]);
 
   const handleAdd = useMemo(() => {
