@@ -15,6 +15,21 @@ function resolveBase(): string {
 }
 const base = resolveBase();
 
+function buildLocalPickupPoints(provider: "ozon" | "cdek" | "russianPost", city?: string) {
+  const providerLabelMap = {
+    ozon: "Ozon",
+    cdek: "CDEK",
+    russianPost: "Почта России",
+  } as const;
+  const providerLabel = providerLabelMap[provider];
+  const cleanCity = (city || "Москва").trim() || "Москва";
+  return [
+    { id: `${provider}-pvz-1`, provider, name: `${providerLabel} ПВЗ Центр`, address: `${cleanCity}, ул. Центральная, 10`, workHours: "10:00–21:00" },
+    { id: `${provider}-pvz-2`, provider, name: `${providerLabel} ПВЗ Север`, address: `${cleanCity}, пр-т Мира, 25`, workHours: "09:00–20:00" },
+    { id: `${provider}-pvz-3`, provider, name: `${providerLabel} ПВЗ Юг`, address: `${cleanCity}, ул. Южная, 7`, workHours: "10:00–20:00" },
+  ];
+}
+
 export function resolveMediaUrl(url?: string | null) {
   if (!url) return "";
   const normalized = String(url).trim().replace(/\\/g, "/");
@@ -122,6 +137,47 @@ export const api = {
   },
   async getPromos() {
     return j(fetch(`${base}/api/promos`));
+  },
+  async getLogisticsStatus() {
+    return j(fetch(`${base}/api/logistics/status`, withAuth()));
+  },
+  async getIntegrationSettings() {
+    return j(fetch(`${base}/api/integrations/settings`, withAuth()));
+  },
+  async updateIntegrationSettings(p: any) {
+    return j(fetch(`${base}/api/integrations/settings`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+  },
+  async testIntegration(p: any) {
+    return j(fetch(`${base}/api/integrations/test`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+  },
+  async testEmail(p: any) {
+    return j(fetch(`${base}/api/system/test-email`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+  },
+  async getPickupPoints(params: { provider?: "ozon" | "cdek" | "russianPost"; city?: string; mode?: "fake" | "real" }) {
+    const search = new URLSearchParams();
+    if (params.provider) search.set("provider", params.provider);
+    if (params.city) search.set("city", params.city);
+    if (params.mode) search.set("mode", params.mode);
+    const query = search.toString();
+    const provider = params.provider || "ozon";
+    const city = params.city || "Москва";
+    const mode = params.mode || "fake";
+    if (mode === "fake") {
+      return {
+        ok: true,
+        provider,
+        mode: "fake",
+        source: "frontend_fallback",
+        points: buildLocalPickupPoints(provider, city),
+      };
+    }
+    const path = `/api/logistics/pickup-points${query ? `?${query}` : ""}`;
+    const primaryUrl = `${base}${path}`;
+    try {
+      return await j(fetch(path));
+    } catch {
+      return await j(fetch(primaryUrl));
+    }
   },
   async getOrders() {
     return j(fetch(`${base}/api/orders`, withAuth()));

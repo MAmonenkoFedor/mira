@@ -92,12 +92,201 @@ function rateLimitMiddleware(max: number, windowMs: number): express.RequestHand
   };
 }
 
+type IntegrationConfig = {
+  smtp: {
+    host?: string;
+    port?: string;
+    user?: string;
+    pass?: string;
+    from?: string;
+  };
+  ozon: {
+    apiKey?: string;
+    clientId?: string;
+  };
+  cdek: {
+    clientId?: string;
+    clientSecret?: string;
+    fromPostalCode?: string;
+  };
+  russianPost: {
+    apiKey?: string;
+    login?: string;
+    password?: string;
+    fromPostalCode?: string;
+  };
+};
+
+const IntegrationStoredSchema = z.object({
+  smtp: z.object({
+    host: z.string().optional(),
+    port: z.string().optional(),
+    user: z.string().optional(),
+    pass: z.string().optional(),
+    from: z.string().optional(),
+  }).optional(),
+  ozon: z.object({
+    apiKey: z.string().optional(),
+    clientId: z.string().optional(),
+  }).optional(),
+  cdek: z.object({
+    clientId: z.string().optional(),
+    clientSecret: z.string().optional(),
+    fromPostalCode: z.string().optional(),
+  }).optional(),
+  russianPost: z.object({
+    apiKey: z.string().optional(),
+    login: z.string().optional(),
+    password: z.string().optional(),
+    fromPostalCode: z.string().optional(),
+  }).optional(),
+});
+
+const IntegrationPatchSchema = z.object({
+  smtp: z.object({
+    host: z.union([z.string(), z.number()]).optional().nullable(),
+    port: z.union([z.string(), z.number()]).optional().nullable(),
+    user: z.union([z.string(), z.number()]).optional().nullable(),
+    pass: z.union([z.string(), z.number()]).optional().nullable(),
+    from: z.union([z.string(), z.number()]).optional().nullable(),
+  }).partial().optional(),
+  ozon: z.object({
+    apiKey: z.union([z.string(), z.number()]).optional().nullable(),
+    clientId: z.union([z.string(), z.number()]).optional().nullable(),
+  }).partial().optional(),
+  cdek: z.object({
+    clientId: z.union([z.string(), z.number()]).optional().nullable(),
+    clientSecret: z.union([z.string(), z.number()]).optional().nullable(),
+    fromPostalCode: z.union([z.string(), z.number()]).optional().nullable(),
+  }).partial().optional(),
+  russianPost: z.object({
+    apiKey: z.union([z.string(), z.number()]).optional().nullable(),
+    login: z.union([z.string(), z.number()]).optional().nullable(),
+    password: z.union([z.string(), z.number()]).optional().nullable(),
+    fromPostalCode: z.union([z.string(), z.number()]).optional().nullable(),
+  }).partial().optional(),
+});
+
+const emptyIntegrationConfig: IntegrationConfig = {
+  smtp: {},
+  ozon: {},
+  cdek: {},
+  russianPost: {},
+};
+
+let integrationConfigCache: IntegrationConfig | null = null;
+
+function cleanOptionalString(value: unknown) {
+  if (value === null || value === undefined) return undefined;
+  const normalized = typeof value === "number" ? String(value) : typeof value === "string" ? value : "";
+  const trimmed = normalized.trim();
+  return trimmed || undefined;
+}
+
+function normalizeIntegrationConfig(input: unknown): IntegrationConfig {
+  const parsed = IntegrationStoredSchema.safeParse(input);
+  const src = parsed.success ? parsed.data : {};
+  return {
+    smtp: {
+      host: cleanOptionalString(src.smtp?.host),
+      port: cleanOptionalString(src.smtp?.port),
+      user: cleanOptionalString(src.smtp?.user),
+      pass: cleanOptionalString(src.smtp?.pass),
+      from: cleanOptionalString(src.smtp?.from),
+    },
+    ozon: {
+      apiKey: cleanOptionalString(src.ozon?.apiKey),
+      clientId: cleanOptionalString(src.ozon?.clientId),
+    },
+    cdek: {
+      clientId: cleanOptionalString(src.cdek?.clientId),
+      clientSecret: cleanOptionalString(src.cdek?.clientSecret),
+      fromPostalCode: cleanOptionalString(src.cdek?.fromPostalCode),
+    },
+    russianPost: {
+      apiKey: cleanOptionalString(src.russianPost?.apiKey),
+      login: cleanOptionalString(src.russianPost?.login),
+      password: cleanOptionalString(src.russianPost?.password),
+      fromPostalCode: cleanOptionalString(src.russianPost?.fromPostalCode),
+    },
+  };
+}
+
+function mergeIntegrationConfig(base: IntegrationConfig, patch: IntegrationConfig): IntegrationConfig {
+  return {
+    smtp: { ...base.smtp, ...patch.smtp },
+    ozon: { ...base.ozon, ...patch.ozon },
+    cdek: { ...base.cdek, ...patch.cdek },
+    russianPost: { ...base.russianPost, ...patch.russianPost },
+  };
+}
+
+function firstNonEmpty(...values: Array<string | undefined>) {
+  for (const value of values) {
+    const next = cleanOptionalString(value);
+    if (next) return next;
+  }
+  return undefined;
+}
+
+async function loadIntegrationConfig() {
+  const { rows } = await pool.query("select data from integration_settings where id=1");
+  if (!rows[0]?.data) return emptyIntegrationConfig;
+  return normalizeIntegrationConfig(rows[0].data);
+}
+
+async function getIntegrationConfig() {
+  if (integrationConfigCache) return integrationConfigCache;
+  integrationConfigCache = await loadIntegrationConfig();
+  return integrationConfigCache;
+}
+
+async function saveIntegrationConfig(patch: IntegrationConfig) {
+  const current = await getIntegrationConfig();
+  const next = mergeIntegrationConfig(current, patch);
+  await pool.query(
+    "insert into integration_settings(id,data) values(1,$1) on conflict (id) do update set data=excluded.data",
+    [next]
+  );
+  integrationConfigCache = next;
+  return next;
+}
+
+async function getResolvedIntegrationConfig() {
+  const stored = await getIntegrationConfig();
+  return {
+    smtp: {
+      host: firstNonEmpty(stored.smtp.host, process.env.SMTP_HOST, process.env.MAIL_SMTP_HOST),
+      port: firstNonEmpty(stored.smtp.port, process.env.SMTP_PORT, process.env.MAIL_SMTP_PORT, "587"),
+      user: firstNonEmpty(stored.smtp.user, process.env.SMTP_USER, process.env.MAIL_LOGIN),
+      pass: firstNonEmpty(stored.smtp.pass, process.env.SMTP_PASS, process.env.MAIL_PASSWORD),
+      from: firstNonEmpty(stored.smtp.from, process.env.SMTP_FROM, process.env.MAIL_FROM),
+    },
+    ozon: {
+      apiKey: firstNonEmpty(stored.ozon.apiKey, process.env.OZON_LOGISTICS_API_KEY),
+      clientId: firstNonEmpty(stored.ozon.clientId, process.env.OZON_LOGISTICS_CLIENT_ID),
+    },
+    cdek: {
+      clientId: firstNonEmpty(stored.cdek.clientId, process.env.CDEK_CLIENT_ID),
+      clientSecret: firstNonEmpty(stored.cdek.clientSecret, process.env.CDEK_CLIENT_SECRET),
+      fromPostalCode: firstNonEmpty(stored.cdek.fromPostalCode, process.env.CDEK_FROM_POSTAL_CODE),
+    },
+    russianPost: {
+      apiKey: firstNonEmpty(stored.russianPost.apiKey, process.env.RUSPOST_API_KEY),
+      login: firstNonEmpty(stored.russianPost.login, process.env.RUSPOST_LOGIN),
+      password: firstNonEmpty(stored.russianPost.password, process.env.RUSPOST_PASSWORD),
+      fromPostalCode: firstNonEmpty(stored.russianPost.fromPostalCode, process.env.RUSPOST_FROM_POSTAL_CODE),
+    },
+  };
+}
+
 async function sendMail(to: string, subject: string, text: string, html?: string) {
-  const host = process.env.SMTP_HOST;
-  const port = Number(process.env.SMTP_PORT || 587);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM || user || "no-reply@example.com";
+  const config = await getResolvedIntegrationConfig();
+  const host = config.smtp.host;
+  const port = Number(config.smtp.port || 587);
+  const user = config.smtp.user;
+  const pass = config.smtp.pass;
+  const from = config.smtp.from || user || "no-reply@example.com";
   if (host && user && pass) {
     const transporter = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
     await transporter.sendMail({ from, to, subject, text, html });
@@ -373,6 +562,402 @@ function requireCustomerAuth(handler: express.RequestHandler): express.RequestHa
     }
   };
 }
+
+function maskSecret(value: string | undefined) {
+  if (!value) return null;
+  if (value.length <= 8) return "***";
+  return `${value.slice(0, 3)}***${value.slice(-3)}`;
+}
+
+function providerStatus(required: Record<string, string | undefined>, optional?: Record<string, string | undefined>) {
+  const missing = Object.entries(required).filter(([, v]) => !v).map(([k]) => k);
+  return {
+    ready: missing.length === 0,
+    missing,
+    required: Object.fromEntries(Object.entries(required).map(([k, v]) => [k, Boolean(v)])),
+    optional: Object.fromEntries(Object.entries(optional || {}).map(([k, v]) => [k, Boolean(v)])),
+  };
+}
+
+const TestMailSchema = z.object({
+  to: z.string().email().optional(),
+  subject: z.string().min(1).max(200).optional(),
+  text: z.string().min(1).max(5000).optional(),
+});
+
+const IntegrationTestSchema = z.object({
+  provider: z.enum(["smtp", "ozon", "cdek", "russianPost", "pickup"]),
+  mode: z.enum(["fake", "real"]).optional(),
+  to: z.string().email().optional(),
+  city: z.string().min(2).max(120).optional(),
+});
+
+const PickupPointsQuerySchema = z.object({
+  provider: z.enum(["ozon", "cdek", "russianPost"]).optional(),
+  mode: z.enum(["fake", "real"]).optional(),
+  city: z.string().min(2).max(120).optional(),
+});
+
+function toIntegrationPatch(input: z.infer<typeof IntegrationPatchSchema>): IntegrationConfig {
+  return {
+    smtp: {
+      host: cleanOptionalString(input.smtp?.host),
+      port: cleanOptionalString(input.smtp?.port),
+      user: cleanOptionalString(input.smtp?.user),
+      pass: cleanOptionalString(input.smtp?.pass),
+      from: cleanOptionalString(input.smtp?.from),
+    },
+    ozon: {
+      apiKey: cleanOptionalString(input.ozon?.apiKey),
+      clientId: cleanOptionalString(input.ozon?.clientId),
+    },
+    cdek: {
+      clientId: cleanOptionalString(input.cdek?.clientId),
+      clientSecret: cleanOptionalString(input.cdek?.clientSecret),
+      fromPostalCode: cleanOptionalString(input.cdek?.fromPostalCode),
+    },
+    russianPost: {
+      apiKey: cleanOptionalString(input.russianPost?.apiKey),
+      login: cleanOptionalString(input.russianPost?.login),
+      password: cleanOptionalString(input.russianPost?.password),
+      fromPostalCode: cleanOptionalString(input.russianPost?.fromPostalCode),
+    },
+  };
+}
+
+function buildIntegrationStatus(config: Awaited<ReturnType<typeof getResolvedIntegrationConfig>>) {
+  return {
+    ozon: providerStatus(
+      {
+        OZON_LOGISTICS_API_KEY: config.ozon.apiKey,
+      },
+      {
+        OZON_LOGISTICS_CLIENT_ID: config.ozon.clientId,
+      }
+    ),
+    cdek: providerStatus({
+      CDEK_CLIENT_ID: config.cdek.clientId,
+      CDEK_CLIENT_SECRET: config.cdek.clientSecret,
+      CDEK_FROM_POSTAL_CODE: config.cdek.fromPostalCode,
+    }),
+    russianPost: providerStatus({
+      RUSPOST_API_KEY: config.russianPost.apiKey,
+      RUSPOST_LOGIN: config.russianPost.login,
+      RUSPOST_PASSWORD: config.russianPost.password,
+      RUSPOST_FROM_POSTAL_CODE: config.russianPost.fromPostalCode,
+    }),
+    smtp: providerStatus(
+      {
+        SMTP_HOST_OR_MAIL_SMTP_HOST: config.smtp.host,
+        SMTP_USER_OR_MAIL_LOGIN: config.smtp.user,
+        SMTP_PASS_OR_MAIL_PASSWORD: config.smtp.pass,
+      },
+      {
+        SMTP_FROM_OR_MAIL_FROM: config.smtp.from,
+        SMTP_PORT_OR_MAIL_SMTP_PORT: config.smtp.port,
+      }
+    ),
+  };
+}
+
+function buildFakePickupPoints(provider: "ozon" | "cdek" | "russianPost", city: string) {
+  const providerLabelMap = {
+    ozon: "Ozon",
+    cdek: "CDEK",
+    russianPost: "Почта России",
+  } as const;
+  const providerLabel = providerLabelMap[provider];
+  const cleanCity = city.trim();
+  return [
+    {
+      id: `${provider}-pvz-1`,
+      provider,
+      name: `${providerLabel} ПВЗ Центр`,
+      address: `${cleanCity}, ул. Центральная, 10`,
+      workHours: "10:00–21:00",
+      lat: 55.7558,
+      lon: 37.6176,
+    },
+    {
+      id: `${provider}-pvz-2`,
+      provider,
+      name: `${providerLabel} ПВЗ Север`,
+      address: `${cleanCity}, пр-т Мира, 25`,
+      workHours: "09:00–20:00",
+      lat: 55.7902,
+      lon: 37.6354,
+    },
+    {
+      id: `${provider}-pvz-3`,
+      provider,
+      name: `${providerLabel} ПВЗ Юг`,
+      address: `${cleanCity}, ул. Южная, 7`,
+      workHours: "10:00–20:00",
+      lat: 55.6945,
+      lon: 37.6202,
+    },
+  ];
+}
+
+let cdekTokenCache: { token: string; expiresAt: number } | null = null;
+
+function asString(value: unknown) {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number") return String(value);
+  return "";
+}
+
+function asNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function cdekBaseUrl() {
+  return (process.env.CDEK_API_BASE || "https://api.cdek.ru/v2").replace(/\/+$/, "");
+}
+
+async function cdekAccessToken(clientId: string, clientSecret: string) {
+  const now = Date.now();
+  if (cdekTokenCache && now < cdekTokenCache.expiresAt) return cdekTokenCache.token;
+  const params = new URLSearchParams();
+  params.set("grant_type", "client_credentials");
+  params.set("client_id", clientId);
+  params.set("client_secret", clientSecret);
+  const authUrl = `${cdekBaseUrl()}/oauth/token`;
+  const response = await fetch(authUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params.toString(),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`cdek_oauth_failed:${response.status}:${text.slice(0, 300)}`);
+  }
+  const data = await response.json() as { access_token?: string; expires_in?: number };
+  const token = asString(data.access_token);
+  if (!token) throw new Error("cdek_oauth_token_missing");
+  const expiresIn = asNumber(data.expires_in) || 1800;
+  cdekTokenCache = { token, expiresAt: now + Math.max(30, expiresIn - 30) * 1000 };
+  return token;
+}
+
+function normalizeCdekPickupPoints(items: any[]) {
+  const result: Array<{ id: string; provider: "cdek"; name: string; address: string; workHours?: string; lat?: number; lon?: number }> = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    const id = asString(item?.code || item?.uuid || item?.id);
+    if (!id || seen.has(id)) continue;
+    const name = asString(item?.name || item?.location?.address_full || item?.location?.address || item?.address);
+    const address = asString(item?.location?.address_full || item?.location?.address || item?.address || item?.name);
+    if (!address) continue;
+    const workHours = asString(item?.work_time || item?.workTime || item?.worktime || item?.schedule);
+    const lat = asNumber(item?.location?.latitude || item?.latitude || item?.coordX);
+    const lon = asNumber(item?.location?.longitude || item?.longitude || item?.coordY);
+    result.push({
+      id,
+      provider: "cdek",
+      name: name || "CDEK ПВЗ",
+      address,
+      workHours: workHours || undefined,
+      lat,
+      lon,
+    });
+    seen.add(id);
+  }
+  return result;
+}
+
+async function fetchCdekPickupPoints(city: string, clientId: string, clientSecret: string) {
+  const token = await cdekAccessToken(clientId, clientSecret);
+  const endpoint = `${cdekBaseUrl()}/deliverypoints`;
+  const attempts = [
+    new URLSearchParams({ city, type: "PVZ" }),
+    new URLSearchParams({ city_name: city, type: "PVZ" }),
+    new URLSearchParams({ city }),
+  ];
+  for (const query of attempts) {
+    const url = `${endpoint}?${query.toString()}`;
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) continue;
+    const data = await response.json();
+    if (!Array.isArray(data)) continue;
+    const normalized = normalizeCdekPickupPoints(data);
+    if (normalized.length) return normalized;
+  }
+  return [];
+}
+
+app.get("/api/logistics/status", requireAuth(async (_req, res) => {
+  const resolved = await getResolvedIntegrationConfig();
+  const stored = await getIntegrationConfig();
+  const status = buildIntegrationStatus(resolved);
+
+  res.json({
+    ok: true,
+    status,
+    settings: stored,
+    secretsPreview: {
+      ozonApiKey: maskSecret(resolved.ozon.apiKey),
+      cdekClientId: maskSecret(resolved.cdek.clientId),
+      cdekClientSecret: maskSecret(resolved.cdek.clientSecret),
+      russianPostApiKey: maskSecret(resolved.russianPost.apiKey),
+      russianPostLogin: resolved.russianPost.login || null,
+      russianPostPassword: maskSecret(resolved.russianPost.password),
+      smtpHost: resolved.smtp.host || null,
+      smtpPort: resolved.smtp.port || null,
+      smtpUser: resolved.smtp.user || null,
+      smtpPass: maskSecret(resolved.smtp.pass),
+      smtpFrom: resolved.smtp.from || null,
+    },
+  });
+}));
+
+app.get("/api/integrations/settings", requireAuth(async (_req, res) => {
+  const settings = await getIntegrationConfig();
+  const resolved = await getResolvedIntegrationConfig();
+  res.json({
+    ok: true,
+    settings,
+    resolved,
+  });
+}));
+
+app.put("/api/integrations/settings", requireAuth(async (req, res) => {
+  try {
+    const data = IntegrationPatchSchema.parse(req.body || {});
+    const next = await saveIntegrationConfig(toIntegrationPatch(data));
+    const resolved = await getResolvedIntegrationConfig();
+    res.json({ ok: true, settings: next, resolved });
+  } catch {
+    res.status(400).json({ error: "bad_request" });
+  }
+}));
+
+app.post("/api/system/test-email", rateLimitMiddleware(10, 15 * 60 * 1000), requireAuth(async (req, res) => {
+  try {
+    const data = TestMailSchema.parse(req.body || {});
+    const resolved = await getResolvedIntegrationConfig();
+    const fallbackTo = resolved.smtp.user || resolved.smtp.from;
+    const to = data.to || fallbackTo;
+    if (!to) return res.status(400).json({ error: "email_required" });
+    const subject = data.subject || "Тест письма МираВкус";
+    const text = data.text || "SMTP настроен корректно.";
+    await sendMail(to, subject, text);
+    res.json({ ok: true, to });
+  } catch {
+    res.status(400).json({ error: "bad_request" });
+  }
+}));
+
+app.post("/api/integrations/test", rateLimitMiddleware(20, 15 * 60 * 1000), requireAuth(async (req, res) => {
+  try {
+    const data = IntegrationTestSchema.parse(req.body || {});
+    const mode = data.mode || "fake";
+    const resolved = await getResolvedIntegrationConfig();
+    const status = buildIntegrationStatus(resolved);
+    if (data.provider === "smtp") {
+      if (mode === "fake") {
+        return res.json({ ok: true, provider: "smtp", mode, ready: status.smtp.ready, missing: status.smtp.missing });
+      }
+      const to = data.to || resolved.smtp.user || resolved.smtp.from;
+      if (!to) return res.status(400).json({ error: "email_required" });
+      await sendMail(to, "Тест SMTP из админки", "SMTP готов к отправке писем.");
+      return res.json({ ok: true, provider: "smtp", mode, to });
+    }
+    if (data.provider === "pickup") {
+      const city = data.city || "Москва";
+      const provider: "ozon" | "cdek" | "russianPost" = "ozon";
+      return res.json({
+        ok: true,
+        provider: "pickup",
+        mode,
+        points: buildFakePickupPoints(provider, city),
+        source: mode === "real" ? "stub" : "fake",
+      });
+    }
+    const providerKey = data.provider === "russianPost" ? "russianPost" : data.provider;
+    const providerStatusValue = status[providerKey];
+    const ready = providerStatusValue.ready;
+    if (mode === "real" && !ready) {
+      return res.status(400).json({ error: "missing_credentials", missing: providerStatusValue.missing, provider: data.provider });
+    }
+    if (data.provider === "cdek" && mode === "real") {
+      try {
+        const points = await fetchCdekPickupPoints(data.city || "Москва", resolved.cdek.clientId!, resolved.cdek.clientSecret!);
+        return res.json({
+          ok: true,
+          provider: data.provider,
+          mode,
+          ready,
+          missing: providerStatusValue.missing,
+          pointsCount: points.length,
+          source: "real",
+        });
+      } catch (err) {
+        return res.status(502).json({
+          error: "cdek_api_failed",
+          provider: data.provider,
+          detail: err instanceof Error ? err.message : "unknown_error",
+        });
+      }
+    }
+    return res.json({
+      ok: true,
+      provider: data.provider,
+      mode,
+      ready,
+      missing: providerStatusValue.missing,
+      source: mode === "real" ? "stub" : "fake",
+    });
+  } catch {
+    res.status(400).json({ error: "bad_request" });
+  }
+}));
+
+app.get("/api/logistics/pickup-points", async (req, res) => {
+  try {
+    const query = PickupPointsQuerySchema.parse(req.query || {});
+    const provider = query.provider || "ozon";
+    const mode = query.mode || "fake";
+    const city = query.city || "Москва";
+    const resolved = await getResolvedIntegrationConfig();
+    const status = buildIntegrationStatus(resolved);
+    const providerStatusValue = provider === "russianPost" ? status.russianPost : provider === "cdek" ? status.cdek : status.ozon;
+    if (mode === "real" && !providerStatusValue.ready) {
+      return res.status(400).json({ error: "missing_credentials", missing: providerStatusValue.missing, provider });
+    }
+    if (mode === "real" && provider === "cdek") {
+      try {
+        const points = await fetchCdekPickupPoints(city, resolved.cdek.clientId!, resolved.cdek.clientSecret!);
+        return res.json({
+          ok: true,
+          provider,
+          mode,
+          source: "real",
+          points,
+        });
+      } catch (err) {
+        return res.status(502).json({
+          error: "cdek_api_failed",
+          provider,
+          detail: err instanceof Error ? err.message : "unknown_error",
+        });
+      }
+    }
+    return res.json({
+      ok: true,
+      provider,
+      mode,
+      source: mode === "real" ? "stub" : "fake",
+      points: buildFakePickupPoints(provider, city),
+    });
+  } catch {
+    res.status(400).json({ error: "bad_request" });
+  }
+});
 
 app.get("/api/categories", async (_req, res) => {
   const { rows } = await pool.query("select id,name,emoji,color,show_on_home,home_order from categories order by name");

@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, Package, FileText, Tag, Gift, Upload, X, Percent, Image as ImageIcon, ArrowUp, ArrowDown, BadgeCheck, ClipboardList, Star, Heart, Menu } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, Package, FileText, Tag, Gift, Upload, X, Percent, Image as ImageIcon, ArrowUp, ArrowDown, BadgeCheck, ClipboardList, Star, Heart, Menu, KeyRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { useStore, type Article, type Order } from '@/components/candy-store/useStore';
 import { api, resolveMediaUrl } from '@/lib/api';
 import { badgeToneSoftClasses, badgeToneClasses, getProductBadgeIds } from '@/components/candy-store/data';
 import type { Product, Category, Promo, PromoScope, Badge, BadgeTone, PackagingOption, Review, FeatureBlock } from '@/components/candy-store/data';
 
-type Tab = 'products' | 'categories' | 'homeCategories' | 'packaging' | 'articles' | 'promos' | 'import' | 'hero' | 'badges' | 'orders' | 'header' | 'footer' | 'reviews' | 'benefits' | 'about';
+type Tab = 'products' | 'categories' | 'homeCategories' | 'packaging' | 'articles' | 'promos' | 'import' | 'hero' | 'badges' | 'orders' | 'header' | 'footer' | 'reviews' | 'benefits' | 'about' | 'integrations';
 
 const getErrorStatus = (err: unknown): number | null => {
   if (!(err instanceof Error)) return null;
@@ -223,6 +223,7 @@ export default function Admin() {
     { key: 'benefits', icon: Heart, label: 'Преимущества', count: store.featureBlocks?.length || 0 },
     { key: 'about', icon: FileText, label: 'О нас', count: 1 },
     { key: 'footer', icon: ImageIcon, label: 'Футер', count: 0 },
+    { key: 'integrations', icon: KeyRound, label: 'Интеграции', count: 4 },
     { key: 'import', icon: Upload, label: 'Импорт', count: 0 },
   ];
 
@@ -349,6 +350,7 @@ export default function Admin() {
               {tab === 'benefits' && <FeatureBlocksTab store={store} />}
               {tab === 'about' && <AboutTab store={store} />}
               {tab === 'footer' && <FooterTab store={store} />}
+              {tab === 'integrations' && <IntegrationsTab />}
             </div>
           </main>
         </div>
@@ -3887,6 +3889,206 @@ function AboutTab({ store }: { store: ReturnType<typeof useStore> }) {
         </button>
       </div>
     </form>
+  );
+}
+
+function IntegrationsTab() {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [settings, setSettings] = useState({
+    smtp: { host: '', port: '587', user: '', pass: '', from: '' },
+    ozon: { apiKey: '', clientId: '' },
+    cdek: { clientId: '', clientSecret: '', fromPostalCode: '' },
+    russianPost: { apiKey: '', login: '', password: '', fromPostalCode: '' },
+  });
+  const [statusData, setStatusData] = useState<any>(null);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [settingsRes, statusRes] = await Promise.all([
+        api.getIntegrationSettings() as Promise<any>,
+        api.getLogisticsStatus() as Promise<any>,
+      ]);
+      const resolved = settingsRes?.resolved || {};
+      setSettings({
+        smtp: {
+          host: resolved?.smtp?.host || '',
+          port: resolved?.smtp?.port || '587',
+          user: resolved?.smtp?.user || '',
+          pass: resolved?.smtp?.pass || '',
+          from: resolved?.smtp?.from || '',
+        },
+        ozon: {
+          apiKey: resolved?.ozon?.apiKey || '',
+          clientId: resolved?.ozon?.clientId || '',
+        },
+        cdek: {
+          clientId: resolved?.cdek?.clientId || '',
+          clientSecret: resolved?.cdek?.clientSecret || '',
+          fromPostalCode: resolved?.cdek?.fromPostalCode || '',
+        },
+        russianPost: {
+          apiKey: resolved?.russianPost?.apiKey || '',
+          login: resolved?.russianPost?.login || '',
+          password: resolved?.russianPost?.password || '',
+          fromPostalCode: resolved?.russianPost?.fromPostalCode || '',
+        },
+      });
+      setStatusData(statusRes);
+    } catch (err) {
+      toast.error(getFriendlyActionError(err, 'Не удалось загрузить настройки интеграций'));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchData();
+  }, [fetchData]);
+
+  const setField = (group: 'smtp' | 'ozon' | 'cdek' | 'russianPost', field: string, value: string) => {
+    setSettings(prev => ({ ...prev, [group]: { ...(prev as any)[group], [field]: value } } as any));
+  };
+
+  const saveSettings = async () => {
+    setSaving(true);
+    try {
+      await api.updateIntegrationSettings(settings);
+      const statusRes = await api.getLogisticsStatus();
+      setStatusData(statusRes);
+      toast.success('Настройки интеграций сохранены');
+    } catch (err) {
+      toast.error(getFriendlyActionError(err, 'Не удалось сохранить настройки'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const runTest = async (provider: 'smtp' | 'ozon' | 'cdek' | 'russianPost', mode: 'fake' | 'real') => {
+    setTesting(true);
+    try {
+      const payload: any = { provider, mode };
+      if (provider === 'smtp' && mode === 'real') payload.to = settings.smtp.user || settings.smtp.from;
+      const result = await api.testIntegration(payload) as any;
+      const missing = Array.isArray(result?.missing) ? result.missing.join(', ') : '';
+      if (missing) toast.success(`Тест ${provider}: не хватает ${missing}`);
+      else toast.success(`Тест ${provider}: успешно (${mode})`);
+      const statusRes = await api.getLogisticsStatus();
+      setStatusData(statusRes);
+    } catch (err) {
+      toast.error(getFriendlyActionError(err, `Тест ${provider} не прошёл`));
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const loadPickupPoints = async (mode: 'fake' | 'real') => {
+    setTesting(true);
+    try {
+      const city = settings.cdek.fromPostalCode || settings.russianPost.fromPostalCode || 'Москва';
+      const result = await api.getPickupPoints({ provider: 'ozon', city, mode }) as any;
+      const count = Array.isArray(result?.points) ? result.points.length : 0;
+      toast.success(`Точки ПВЗ Ozon: найдено ${count}`);
+    } catch (err) {
+      toast.error(getFriendlyActionError(err, 'Не удалось получить точки ПВЗ'));
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const statusMark = (ready?: boolean) => (
+    <span className={`text-xs px-2 py-1 rounded-full ${ready ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+      {ready ? 'Готово' : 'Не готово'}
+    </span>
+  );
+
+  if (loading) {
+    return (
+      <div className="bg-card rounded-2xl p-5 border border-border/40 shadow-sm">
+        Загрузка настроек интеграций...
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-4">
+      <div className="bg-card rounded-2xl p-5 border border-border/40 shadow-sm grid gap-4">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="font-display text-lg font-semibold">SMTP (письма)</h3>
+          {statusMark(statusData?.status?.smtp?.ready)}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <input value={settings.smtp.host} onChange={e => setField('smtp', 'host', e.target.value)} className="admin-input" placeholder="SMTP host" />
+          <input value={settings.smtp.port} onChange={e => setField('smtp', 'port', e.target.value)} className="admin-input" placeholder="SMTP port" />
+          <input value={settings.smtp.user} onChange={e => setField('smtp', 'user', e.target.value)} className="admin-input" placeholder="SMTP user/login" />
+          <input value={settings.smtp.pass} onChange={e => setField('smtp', 'pass', e.target.value)} className="admin-input" placeholder="SMTP password" />
+          <input value={settings.smtp.from} onChange={e => setField('smtp', 'from', e.target.value)} className="admin-input sm:col-span-2" placeholder="SMTP from (email отправителя)" />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => runTest('smtp', 'fake')} disabled={testing} className="px-3 py-2 rounded-xl border border-border text-xs hover:bg-muted transition-colors">Тест SMTP (fake)</button>
+          <button type="button" onClick={() => runTest('smtp', 'real')} disabled={testing} className="px-3 py-2 rounded-xl border border-border text-xs hover:bg-muted transition-colors">Тест SMTP (real)</button>
+        </div>
+      </div>
+
+      <div className="bg-card rounded-2xl p-5 border border-border/40 shadow-sm grid gap-4">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="font-display text-lg font-semibold">Ozon</h3>
+          {statusMark(statusData?.status?.ozon?.ready)}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <input value={settings.ozon.apiKey} onChange={e => setField('ozon', 'apiKey', e.target.value)} className="admin-input" placeholder="Ozon API key" />
+          <input value={settings.ozon.clientId} onChange={e => setField('ozon', 'clientId', e.target.value)} className="admin-input" placeholder="Ozon client id (опционально)" />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => runTest('ozon', 'fake')} disabled={testing} className="px-3 py-2 rounded-xl border border-border text-xs hover:bg-muted transition-colors">Тест Ozon (fake)</button>
+          <button type="button" onClick={() => runTest('ozon', 'real')} disabled={testing} className="px-3 py-2 rounded-xl border border-border text-xs hover:bg-muted transition-colors">Тест Ozon (real)</button>
+          <button type="button" onClick={() => loadPickupPoints('fake')} disabled={testing} className="px-3 py-2 rounded-xl border border-border text-xs hover:bg-muted transition-colors">ПВЗ Ozon (fake)</button>
+          <button type="button" onClick={() => loadPickupPoints('real')} disabled={testing} className="px-3 py-2 rounded-xl border border-border text-xs hover:bg-muted transition-colors">ПВЗ Ozon (real)</button>
+        </div>
+      </div>
+
+      <div className="bg-card rounded-2xl p-5 border border-border/40 shadow-sm grid gap-4">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="font-display text-lg font-semibold">CDEK</h3>
+          {statusMark(statusData?.status?.cdek?.ready)}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <input value={settings.cdek.clientId} onChange={e => setField('cdek', 'clientId', e.target.value)} className="admin-input" placeholder="CDEK client id" />
+          <input value={settings.cdek.clientSecret} onChange={e => setField('cdek', 'clientSecret', e.target.value)} className="admin-input" placeholder="CDEK client secret" />
+          <input value={settings.cdek.fromPostalCode} onChange={e => setField('cdek', 'fromPostalCode', e.target.value)} className="admin-input sm:col-span-2" placeholder="CDEK индекс отправки" />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => runTest('cdek', 'fake')} disabled={testing} className="px-3 py-2 rounded-xl border border-border text-xs hover:bg-muted transition-colors">Тест CDEK (fake)</button>
+          <button type="button" onClick={() => runTest('cdek', 'real')} disabled={testing} className="px-3 py-2 rounded-xl border border-border text-xs hover:bg-muted transition-colors">Тест CDEK (real)</button>
+        </div>
+      </div>
+
+      <div className="bg-card rounded-2xl p-5 border border-border/40 shadow-sm grid gap-4">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="font-display text-lg font-semibold">Почта России</h3>
+          {statusMark(statusData?.status?.russianPost?.ready)}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <input value={settings.russianPost.apiKey} onChange={e => setField('russianPost', 'apiKey', e.target.value)} className="admin-input" placeholder="Почта API key" />
+          <input value={settings.russianPost.login} onChange={e => setField('russianPost', 'login', e.target.value)} className="admin-input" placeholder="Почта login" />
+          <input value={settings.russianPost.password} onChange={e => setField('russianPost', 'password', e.target.value)} className="admin-input" placeholder="Почта password" />
+          <input value={settings.russianPost.fromPostalCode} onChange={e => setField('russianPost', 'fromPostalCode', e.target.value)} className="admin-input" placeholder="Почта индекс отправки" />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => runTest('russianPost', 'fake')} disabled={testing} className="px-3 py-2 rounded-xl border border-border text-xs hover:bg-muted transition-colors">Тест Почта (fake)</button>
+          <button type="button" onClick={() => runTest('russianPost', 'real')} disabled={testing} className="px-3 py-2 rounded-xl border border-border text-xs hover:bg-muted transition-colors">Тест Почта (real)</button>
+        </div>
+      </div>
+
+      <div className="flex justify-end">
+        <button type="button" onClick={saveSettings} disabled={saving}
+          className="px-4 py-2 rounded-xl text-sm bg-primary text-primary-foreground font-medium hover:scale-[1.02] active:scale-95 transition-transform disabled:opacity-70">
+          {saving ? 'Сохраняем...' : 'Сохранить интеграции'}
+        </button>
+      </div>
+    </div>
   );
 }
 
