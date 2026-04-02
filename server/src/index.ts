@@ -31,6 +31,18 @@ app.use(
 
 const pool = createPool();
 const jwtSecret = new TextEncoder().encode(process.env.JWT_SECRET || "dev_secret");
+let hasCategoryOrderColumn = true;
+
+async function refreshCategoryOrderColumnFlag() {
+  try {
+    const { rows } = await pool.query(
+      "select 1 from information_schema.columns where table_schema='public' and table_name='categories' and column_name='category_order' limit 1"
+    );
+    hasCategoryOrderColumn = rows.length > 0;
+  } catch {
+    hasCategoryOrderColumn = false;
+  }
+}
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 const heroDir = path.join(uploadsDir, "hero");
@@ -960,7 +972,10 @@ app.get("/api/logistics/pickup-points", async (req, res) => {
 });
 
 app.get("/api/categories", async (_req, res) => {
-  const { rows } = await pool.query("select id,name,emoji,color,show_on_home,home_order,category_order from categories order by coalesce(category_order, 2147483647), name, id");
+  const query = hasCategoryOrderColumn
+    ? "select id,name,emoji,color,show_on_home,home_order,category_order from categories order by coalesce(category_order, 2147483647), name, id"
+    : "select id,name,emoji,color,show_on_home,home_order from categories order by name, id";
+  const { rows } = await pool.query(query);
   res.json(
     rows.map((r: any) => ({
       id: r.id,
@@ -969,7 +984,7 @@ app.get("/api/categories", async (_req, res) => {
       color: r.color ?? undefined,
       showOnHome: r.show_on_home ?? null,
       homeOrder: r.home_order ?? null,
-      categoryOrder: r.category_order ?? null,
+      categoryOrder: hasCategoryOrderColumn ? (r.category_order ?? null) : null,
     }))
   );
 });
@@ -986,20 +1001,34 @@ const CategorySchema = z.object({
 
 app.post("/api/categories", requireAuth(async (req, res) => {
   const data = CategorySchema.parse(req.body);
-  await pool.query(
-    "insert into categories(id,name,emoji,color,show_on_home,home_order,category_order) values($1,$2,$3,$4,$5,$6,coalesce($7,(select coalesce(max(category_order),0)+1 from categories))) on conflict (id) do update set name=excluded.name,emoji=excluded.emoji,color=excluded.color,show_on_home=coalesce(excluded.show_on_home,categories.show_on_home),home_order=coalesce(excluded.home_order,categories.home_order),category_order=coalesce(excluded.category_order,categories.category_order)",
-    [data.id, data.name, data.emoji ?? null, data.color ?? null, data.showOnHome ?? null, data.homeOrder ?? null, data.categoryOrder ?? null]
-  );
+  if (hasCategoryOrderColumn) {
+    await pool.query(
+      "insert into categories(id,name,emoji,color,show_on_home,home_order,category_order) values($1,$2,$3,$4,$5,$6,coalesce($7,(select coalesce(max(category_order),0)+1 from categories))) on conflict (id) do update set name=excluded.name,emoji=excluded.emoji,color=excluded.color,show_on_home=coalesce(excluded.show_on_home,categories.show_on_home),home_order=coalesce(excluded.home_order,categories.home_order),category_order=coalesce(excluded.category_order,categories.category_order)",
+      [data.id, data.name, data.emoji ?? null, data.color ?? null, data.showOnHome ?? null, data.homeOrder ?? null, data.categoryOrder ?? null]
+    );
+  } else {
+    await pool.query(
+      "insert into categories(id,name,emoji,color,show_on_home,home_order) values($1,$2,$3,$4,$5,$6) on conflict (id) do update set name=excluded.name,emoji=excluded.emoji,color=excluded.color,show_on_home=coalesce(excluded.show_on_home,categories.show_on_home),home_order=coalesce(excluded.home_order,categories.home_order)",
+      [data.id, data.name, data.emoji ?? null, data.color ?? null, data.showOnHome ?? null, data.homeOrder ?? null]
+    );
+  }
   res.status(201).json({ ok: true });
 }));
 
 app.put("/api/categories/:id", requireAuth(async (req, res) => {
   const data = CategorySchema.partial({ id: true }).parse(req.body);
   const id = req.params.id;
-  await pool.query(
-    "update categories set name=coalesce($2,name), emoji=$3, color=$4, show_on_home=coalesce($5,show_on_home), home_order=coalesce($6,home_order), category_order=coalesce($7,category_order) where id=$1",
-    [id, data.name ?? null, data.emoji ?? null, data.color ?? null, data.showOnHome ?? null, data.homeOrder ?? null, data.categoryOrder ?? null]
-  );
+  if (hasCategoryOrderColumn) {
+    await pool.query(
+      "update categories set name=coalesce($2,name), emoji=$3, color=$4, show_on_home=coalesce($5,show_on_home), home_order=coalesce($6,home_order), category_order=coalesce($7,category_order) where id=$1",
+      [id, data.name ?? null, data.emoji ?? null, data.color ?? null, data.showOnHome ?? null, data.homeOrder ?? null, data.categoryOrder ?? null]
+    );
+  } else {
+    await pool.query(
+      "update categories set name=coalesce($2,name), emoji=$3, color=$4, show_on_home=coalesce($5,show_on_home), home_order=coalesce($6,home_order) where id=$1",
+      [id, data.name ?? null, data.emoji ?? null, data.color ?? null, data.showOnHome ?? null, data.homeOrder ?? null]
+    );
+  }
   res.json({ ok: true });
 }));
 
@@ -2091,6 +2120,7 @@ app.post("/api/auth/admins", rateLimitMiddleware(10, 15 * 60 * 1000), requireAut
 
 async function start() {
   await migrate(pool);
+  await refreshCategoryOrderColumnFlag();
   await seedIfEmpty(pool);
   await ensureAdminExists();
   await ensureTestCustomerExists();

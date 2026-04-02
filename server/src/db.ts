@@ -26,16 +26,20 @@ export async function migrate(pool: Pool) {
   `);
   await pool.query(`alter table categories add column if not exists show_on_home boolean`);
   await pool.query(`alter table categories add column if not exists home_order integer`);
-  await pool.query(`alter table categories add column if not exists category_order integer`);
-  await pool.query(`
-    update categories as c
-    set category_order = src.rn
-    from (
-      select id, row_number() over (order by name, id) as rn
-      from categories
-    ) as src
-    where c.id = src.id and c.category_order is null
-  `);
+  try {
+    await pool.query(`alter table categories add column if not exists category_order integer`);
+    await pool.query(`
+      update categories as c
+      set category_order = src.rn
+      from (
+        select id, row_number() over (order by name, id) as rn
+        from categories
+      ) as src
+      where c.id = src.id and c.category_order is null
+    `);
+  } catch (err) {
+    console.warn("category_order migration skipped", err instanceof Error ? err.message : "unknown_error");
+  }
   await pool.query(`
     create table if not exists products(
       id serial primary key,
