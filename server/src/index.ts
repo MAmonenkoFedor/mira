@@ -1064,7 +1064,16 @@ app.put("/api/categories", requireAuth(async (req, res) => {
 }));
 
 app.delete("/api/categories/:id", requireAuth(async (req, res) => {
-  await pool.query("delete from categories where id=$1", [req.params.id]);
+  const categoryId = req.params.id;
+  await pool.query("begin");
+  try {
+    await pool.query("delete from categories where id=$1", [categoryId]);
+    await pool.query("update products set categories=array_remove(coalesce(categories,'{}'::text[]), $1) where categories @> array[$1]::text[]", [categoryId]);
+    await pool.query("commit");
+  } catch (err) {
+    await pool.query("rollback");
+    throw err;
+  }
   res.json({ ok: true });
 }));
 
@@ -1136,8 +1145,12 @@ const ProductSchema = z.object({
 
 app.post("/api/products", requireAuth(async (req, res) => {
   const p = ProductSchema.parse(req.body);
-  const categories = (p.categories && p.categories.length ? p.categories : (p.category ? [p.category] : [])).filter(Boolean);
+  const categories = Array.from(new Set((p.categories && p.categories.length ? p.categories : (p.category ? [p.category] : [])).filter(Boolean)));
   if (!categories.length) return res.status(400).json({ error: "missing_category" });
+  const { rows: categoryRows } = await pool.query("select id from categories where id = any($1::text[])", [categories]);
+  const existingCategoryIds = new Set((categoryRows as Array<{ id: string }>).map((row) => row.id));
+  const missingCategories = categories.filter((id) => !existingCategoryIds.has(id));
+  if (missingCategories.length) return res.status(400).json({ error: "unknown_category", missing: missingCategories });
   const primaryCategory = categories[0] ?? null;
   let packagingMode = p.packagingMode && p.packagingMode !== "none" ? p.packagingMode : null;
   let standardPackagingId = p.packagingMode === "standard" ? (p.standardPackagingId ?? null) : null;
@@ -1185,7 +1198,16 @@ app.put("/api/products/:id", requireAuth(async (req, res) => {
   if (hasCategories && (!Array.isArray(p.categories) || p.categories.filter(Boolean).length === 0)) {
     return res.status(400).json({ error: "missing_category" });
   }
-  const nextCategories = hasCategories ? (p.categories ?? []).filter(Boolean) : null;
+  const nextCategories = hasCategories ? Array.from(new Set((p.categories ?? []).filter(Boolean))) : null;
+  const categoriesToValidate = hasCategories
+    ? (nextCategories ?? [])
+    : (typeof p.category === "string" && p.category.trim() ? [p.category.trim()] : []);
+  if (categoriesToValidate.length) {
+    const { rows: categoryRows } = await pool.query("select id from categories where id = any($1::text[])", [categoriesToValidate]);
+    const existingCategoryIds = new Set((categoryRows as Array<{ id: string }>).map((row) => row.id));
+    const missingCategories = categoriesToValidate.filter((categoryId) => !existingCategoryIds.has(categoryId));
+    if (missingCategories.length) return res.status(400).json({ error: "unknown_category", missing: missingCategories });
+  }
   const nextPrimaryCategory = hasCategories ? (nextCategories![0] ?? null) : (p.category ?? null);
   const hasPackagingMode = Object.prototype.hasOwnProperty.call(p, "packagingMode");
   const hasStandardPackagingId = Object.prototype.hasOwnProperty.call(p, "standardPackagingId");

@@ -290,26 +290,18 @@ export function useStore() {
 
   // Products
   const addProduct = useCallback(async (p: Omit<Product, 'id'>) => {
-    if (apiReady) {
-      const { id } = await api.addProduct(p) as { id: number };
-      setProducts(prev => [...prev, { ...p, id }]);
-    } else {
-      setProducts(prev => {
-        const id = prev.length ? Math.max(...prev.map(x => x.id)) + 1 : 1;
-        return [...prev, { ...p, id }];
-      });
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    const { id } = await api.addProduct(p) as { id: number };
+    setProducts(prev => [...prev, { ...p, id }]);
   }, [apiReady]);
   const updateProduct = useCallback(async (id: number, data: Partial<Product>) => {
-    if (apiReady) {
-      await api.updateProduct(id, data);
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    await api.updateProduct(id, data);
     setProducts(prev => prev.map(p => p.id === id ? { ...p, ...data } : p));
   }, [apiReady]);
   const deleteProduct = useCallback(async (id: number) => {
-    if (apiReady) {
-      await api.deleteProduct(id);
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    await api.deleteProduct(id);
     setProducts(prev => prev.filter(p => p.id !== id));
   }, [apiReady]);
 
