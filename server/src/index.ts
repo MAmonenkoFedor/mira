@@ -2118,12 +2118,31 @@ app.post("/api/auth/admins", rateLimitMiddleware(10, 15 * 60 * 1000), requireAut
   }
 }));
 
+async function runBootStep(name: string, fn: () => Promise<void>) {
+  try {
+    await fn();
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "unknown_error";
+    console.error(`boot_step_failed:${name}:${detail}`);
+  }
+}
+
 async function start() {
-  await migrate(pool);
-  await refreshCategoryOrderColumnFlag();
-  await seedIfEmpty(pool);
-  await ensureAdminExists();
-  await ensureTestCustomerExists();
+  await runBootStep("migrate", async () => {
+    await migrate(pool);
+  });
+  await runBootStep("refreshCategoryOrderColumnFlag", async () => {
+    await refreshCategoryOrderColumnFlag();
+  });
+  await runBootStep("seedIfEmpty", async () => {
+    await seedIfEmpty(pool);
+  });
+  await runBootStep("ensureAdminExists", async () => {
+    await ensureAdminExists();
+  });
+  await runBootStep("ensureTestCustomerExists", async () => {
+    await ensureTestCustomerExists();
+  });
   const port = Number(process.env.PORT || 3001);
   app.listen(port, "0.0.0.0", () => {
     console.log(`server on ${port}`);
