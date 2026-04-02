@@ -185,6 +185,12 @@ export async function migrate(pool: Pool) {
     );
   `);
   await pool.query(`
+    create table if not exists header_settings(
+      id integer primary key default 1,
+      data jsonb not null
+    );
+  `);
+  await pool.query(`
     create table if not exists hero_text_settings(
       id integer primary key default 1,
       data jsonb not null

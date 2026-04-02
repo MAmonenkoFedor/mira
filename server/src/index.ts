@@ -387,6 +387,13 @@ const FooterSchema = z.object({
   socialItems: z.array(z.string().min(1)),
   copyright: z.string().min(1),
 });
+const HeaderSchema = z.object({
+  brandName: z.string().min(1),
+  brandTextColor: z.string().min(1),
+  menuButtonBg: z.string().min(1),
+  menuButtonTextColor: z.string().min(1),
+  hiddenSections: z.array(z.string().min(1)),
+});
 const HeroTextSchema = z.object({
   title: z.string().min(1),
   accent: z.string().min(1),
@@ -426,6 +433,13 @@ const defaultFooter = {
   address: "📍 Москва, ул. Сладкая, 15",
   socialItems: ["📱 Telegram", "📷 Instagram", "💬 VK"],
   copyright: "© 2026 МираВкус. Все права защищены.",
+};
+const defaultHeader = {
+  brandName: "МираВкус",
+  brandTextColor: "#db2777",
+  menuButtonBg: "#db2777",
+  menuButtonTextColor: "#ffffff",
+  hiddenSections: [],
 };
 const defaultHeroText = {
   title: "Сладкое счастье",
@@ -1018,6 +1032,23 @@ app.post("/api/categories", requireAuth(async (req, res) => {
 app.put("/api/categories/:id", requireAuth(async (req, res) => {
   const data = CategorySchema.partial({ id: true }).parse(req.body);
   const id = req.params.id;
+  if (hasCategoryOrderColumn) {
+    await pool.query(
+      "update categories set name=coalesce($2,name), emoji=$3, color=$4, show_on_home=coalesce($5,show_on_home), home_order=coalesce($6,home_order), category_order=coalesce($7,category_order) where id=$1",
+      [id, data.name ?? null, data.emoji ?? null, data.color ?? null, data.showOnHome ?? null, data.homeOrder ?? null, data.categoryOrder ?? null]
+    );
+  } else {
+    await pool.query(
+      "update categories set name=coalesce($2,name), emoji=$3, color=$4, show_on_home=coalesce($5,show_on_home), home_order=coalesce($6,home_order) where id=$1",
+      [id, data.name ?? null, data.emoji ?? null, data.color ?? null, data.showOnHome ?? null, data.homeOrder ?? null]
+    );
+  }
+  res.json({ ok: true });
+}));
+
+app.put("/api/categories", requireAuth(async (req, res) => {
+  const data = CategorySchema.partial().extend({ id: z.string() }).parse(req.body);
+  const id = data.id;
   if (hasCategoryOrderColumn) {
     await pool.query(
       "update categories set name=coalesce($2,name), emoji=$3, color=$4, show_on_home=coalesce($5,show_on_home), home_order=coalesce($6,home_order), category_order=coalesce($7,category_order) where id=$1",
@@ -1647,6 +1678,25 @@ app.put("/api/footer", requireAuth(async (req, res) => {
   await pool.query(
     "insert into footer_settings(id,data) values(1,$1) on conflict (id) do update set data=excluded.data",
     [data]
+  );
+  res.json({ ok: true });
+}));
+
+app.get("/api/header", async (_req, res) => {
+  const { rows } = await pool.query("select data from header_settings where id=1");
+  if (!rows[0]) return res.json(defaultHeader);
+  const merged = { ...defaultHeader, ...(rows[0].data || {}) };
+  res.json(HeaderSchema.parse(merged));
+});
+
+app.put("/api/header", requireAuth(async (req, res) => {
+  const patch = HeaderSchema.partial().parse(req.body);
+  const { rows } = await pool.query("select data from header_settings where id=1");
+  const current = rows[0]?.data && typeof rows[0].data === "object" ? rows[0].data : {};
+  const next = HeaderSchema.parse({ ...defaultHeader, ...current, ...patch });
+  await pool.query(
+    "insert into header_settings(id,data) values(1,$1) on conflict (id) do update set data=excluded.data",
+    [next]
   );
   res.json({ ok: true });
 }));

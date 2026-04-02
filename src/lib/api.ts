@@ -249,7 +249,14 @@ export const api = {
     return j(fetch(`${base}/api/categories`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(c) })));
   },
   async updateCategory(id: string, c: any) {
-    return j(fetch(`${base}/api/categories/${encodeURIComponent(id)}`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(c) })));
+    try {
+      return await j(fetch(`${base}/api/categories/${encodeURIComponent(id)}`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(c) })));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      const status = Number(String(message).split("|")[0]);
+      if (status !== 404 && status !== 502) throw err;
+      return j(fetch(`${base}/api/categories`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...c }) })));
+    }
   },
   async deleteCategory(id: string) {
     return j(fetch(`${base}/api/categories/${encodeURIComponent(id)}`, withAuth({ method: "DELETE" })));
