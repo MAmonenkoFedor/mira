@@ -2268,7 +2268,7 @@ function CategoryForm({ category, categories, colorOptions, onSave, onCancel }: 
   const parentById = useMemo(() => {
     return new Map(categories.map(c => [c.id, c]));
   }, [categories]);
-  const getParentPathLabel = (id: string) => {
+  const getParentPathLabel = useCallback((id: string) => {
     const parts = id.split('/').filter(Boolean);
     if (!parts.length) return id;
     const names: string[] = [];
@@ -2277,7 +2277,7 @@ function CategoryForm({ category, categories, colorOptions, onSave, onCancel }: 
       names.push(parentById.get(partialId)?.name || parts[i]);
     }
     return names.join(' / ');
-  };
+  }, [parentById]);
   const derivedId = (form.parentId ? `${form.parentId}/${form.slug}` : form.slug).trim();
   const currentParent = useMemo(() => {
     if (!form.parentId) return null;
@@ -2289,7 +2289,7 @@ function CategoryForm({ category, categories, colorOptions, onSave, onCancel }: 
     return categories
       .filter(c => c.id.startsWith(`${base}/`) && c.id.split('/').length === base.split('/').length + 1)
       .sort((a, b) => getParentPathLabel(a.id).localeCompare(getParentPathLabel(b.id), 'ru'));
-  }, [categories, category?.id, derivedId]);
+  }, [categories, category?.id, derivedId, getParentPathLabel]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

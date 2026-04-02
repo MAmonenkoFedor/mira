@@ -265,6 +265,14 @@ const Catalog = () => {
                       return renderNode(node, 0);
                     })}
                   </div>
+                  <div className="mt-4 pt-3 border-t border-border/60">
+                    <button
+                      onClick={() => navigate('/about')}
+                      className="w-full text-left px-3 py-2 rounded-2xl text-sm transition hover:bg-muted/50"
+                    >
+                      О нас
+                    </button>
+                  </div>
                 </div>
               </aside>
 
