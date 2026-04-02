@@ -960,7 +960,7 @@ app.get("/api/logistics/pickup-points", async (req, res) => {
 });
 
 app.get("/api/categories", async (_req, res) => {
-  const { rows } = await pool.query("select id,name,emoji,color,show_on_home,home_order from categories order by name");
+  const { rows } = await pool.query("select id,name,emoji,color,show_on_home,home_order,category_order from categories order by coalesce(category_order, 2147483647), name, id");
   res.json(
     rows.map((r: any) => ({
       id: r.id,
@@ -969,6 +969,7 @@ app.get("/api/categories", async (_req, res) => {
       color: r.color ?? undefined,
       showOnHome: r.show_on_home ?? null,
       homeOrder: r.home_order ?? null,
+      categoryOrder: r.category_order ?? null,
     }))
   );
 });
@@ -980,13 +981,14 @@ const CategorySchema = z.object({
   color: z.string().optional().nullable(),
   showOnHome: z.boolean().optional().nullable(),
   homeOrder: z.number().int().optional().nullable(),
+  categoryOrder: z.number().int().optional().nullable(),
 });
 
 app.post("/api/categories", requireAuth(async (req, res) => {
   const data = CategorySchema.parse(req.body);
   await pool.query(
-    "insert into categories(id,name,emoji,color,show_on_home,home_order) values($1,$2,$3,$4,$5,$6) on conflict (id) do update set name=excluded.name,emoji=excluded.emoji,color=excluded.color,show_on_home=coalesce(excluded.show_on_home,categories.show_on_home),home_order=coalesce(excluded.home_order,categories.home_order)",
-    [data.id, data.name, data.emoji ?? null, data.color ?? null, data.showOnHome ?? null, data.homeOrder ?? null]
+    "insert into categories(id,name,emoji,color,show_on_home,home_order,category_order) values($1,$2,$3,$4,$5,$6,coalesce($7,(select coalesce(max(category_order),0)+1 from categories))) on conflict (id) do update set name=excluded.name,emoji=excluded.emoji,color=excluded.color,show_on_home=coalesce(excluded.show_on_home,categories.show_on_home),home_order=coalesce(excluded.home_order,categories.home_order),category_order=coalesce(excluded.category_order,categories.category_order)",
+    [data.id, data.name, data.emoji ?? null, data.color ?? null, data.showOnHome ?? null, data.homeOrder ?? null, data.categoryOrder ?? null]
   );
   res.status(201).json({ ok: true });
 }));
@@ -995,8 +997,8 @@ app.put("/api/categories/:id", requireAuth(async (req, res) => {
   const data = CategorySchema.partial({ id: true }).parse(req.body);
   const id = req.params.id;
   await pool.query(
-    "update categories set name=coalesce($2,name), emoji=$3, color=$4, show_on_home=coalesce($5,show_on_home), home_order=coalesce($6,home_order) where id=$1",
-    [id, data.name ?? null, data.emoji ?? null, data.color ?? null, data.showOnHome ?? null, data.homeOrder ?? null]
+    "update categories set name=coalesce($2,name), emoji=$3, color=$4, show_on_home=coalesce($5,show_on_home), home_order=coalesce($6,home_order), category_order=coalesce($7,category_order) where id=$1",
+    [id, data.name ?? null, data.emoji ?? null, data.color ?? null, data.showOnHome ?? null, data.homeOrder ?? null, data.categoryOrder ?? null]
   );
   res.json({ ok: true });
 }));

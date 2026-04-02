@@ -1866,6 +1866,7 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
   const [editing, setEditing] = useState<Category | null>(null);
   const [creating, setCreating] = useState(false);
   const [groupBusyId, setGroupBusyId] = useState<string | null>(null);
+  const [reorderBusy, setReorderBusy] = useState(false);
   const [listFilter, setListFilter] = useState<'all' | 'root' | 'nested' | 'set' | 'single'>('all');
 
   const colorOptions = [
@@ -1888,25 +1889,42 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
     }
     return names.join(' / ');
   }, [categoriesById]);
-  const categoriesSorted = useMemo(() => {
-    return [...store.categories]
-      .map(c => ({ ...c, pathLabel: getPathLabel(c.id) }))
-      .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'ru'));
-  }, [store.categories, getPathLabel]);
+  const compareCategoriesByOrder = useCallback((a: Category, b: Category) => {
+    const ao = typeof a.categoryOrder === 'number' ? a.categoryOrder : Number.POSITIVE_INFINITY;
+    const bo = typeof b.categoryOrder === 'number' ? b.categoryOrder : Number.POSITIVE_INFINITY;
+    if (ao !== bo) return ao - bo;
+    return getPathLabel(a.id).localeCompare(getPathLabel(b.id), 'ru');
+  }, [getPathLabel]);
   const childrenByParent = useMemo(() => {
     const map = new Map<string, Category[]>();
     for (const c of store.categories) {
       const parentId = c.id.includes('/') ? c.id.split('/').slice(0, -1).join('/') : '';
-      if (!parentId) continue;
       const list = map.get(parentId) || [];
       list.push(c);
       map.set(parentId, list);
     }
     for (const list of map.values()) {
-      list.sort((a, b) => getPathLabel(a.id).localeCompare(getPathLabel(b.id), 'ru'));
+      list.sort(compareCategoriesByOrder);
     }
     return map;
-  }, [store.categories, getPathLabel]);
+  }, [store.categories, compareCategoriesByOrder]);
+  const categoriesSorted = useMemo(() => {
+    const ordered: Array<Category & { pathLabel: string; depth: number; parentId: string }> = [];
+    const appendChildren = (parentId: string, depth: number) => {
+      const children = childrenByParent.get(parentId) || [];
+      for (const child of children) {
+        ordered.push({
+          ...child,
+          pathLabel: getPathLabel(child.id),
+          depth,
+          parentId,
+        });
+        appendChildren(child.id, depth + 1);
+      }
+    };
+    appendChildren('', 0);
+    return ordered;
+  }, [childrenByParent, getPathLabel]);
   const visibleCategories = useMemo(() => {
     return categoriesSorted.filter(c => {
       if (listFilter === 'root') return !c.id.includes('/');
@@ -1984,10 +2002,12 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
 
       <div className="grid gap-3">
         {visibleCategories.map(c => {
-          const depth = c.id.split('/').length - 1;
-          const parentId = c.id.includes('/') ? c.id.split('/').slice(0, -1).join('/') : '';
+          const depth = c.depth;
+          const parentId = c.parentId;
           const parent = parentId ? categoriesById.get(parentId) : null;
           const children = childrenByParent.get(c.id) || [];
+          const siblings = childrenByParent.get(parentId) || [];
+          const siblingIndex = siblings.findIndex(item => item.id === c.id);
           return (
           <div
             key={c.id}
@@ -2066,8 +2086,53 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
                   </span>
                 </div>
               )}
+              <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                <span className="px-2 py-0.5 rounded-full bg-muted">
+                  Порядок категории: {typeof c.categoryOrder === 'number' ? c.categoryOrder : '—'}
+                </span>
+              </div>
             </div>
             <div className="flex gap-1.5">
+              <button
+                onClick={async () => {
+                  if (reorderBusy || siblingIndex <= 0) return;
+                  try {
+                    setReorderBusy(true);
+                    const next = [...siblings];
+                    [next[siblingIndex - 1], next[siblingIndex]] = [next[siblingIndex], next[siblingIndex - 1]];
+                    await Promise.all(next.map((item, idx) => store.updateCategory(item.id, { categoryOrder: idx + 1 })));
+                    toast.success('Порядок категорий обновлен');
+                  } catch (err) {
+                    toast.error(getFriendlyActionError(err, 'Не удалось изменить порядок категорий'));
+                  } finally {
+                    setReorderBusy(false);
+                  }
+                }}
+                disabled={reorderBusy || siblingIndex <= 0}
+                className="p-2 rounded-xl hover:bg-muted text-muted-foreground disabled:opacity-40"
+              >
+                <ArrowUp size={15} />
+              </button>
+              <button
+                onClick={async () => {
+                  if (reorderBusy || siblingIndex < 0 || siblingIndex >= siblings.length - 1) return;
+                  try {
+                    setReorderBusy(true);
+                    const next = [...siblings];
+                    [next[siblingIndex + 1], next[siblingIndex]] = [next[siblingIndex], next[siblingIndex + 1]];
+                    await Promise.all(next.map((item, idx) => store.updateCategory(item.id, { categoryOrder: idx + 1 })));
+                    toast.success('Порядок категорий обновлен');
+                  } catch (err) {
+                    toast.error(getFriendlyActionError(err, 'Не удалось изменить порядок категорий'));
+                  } finally {
+                    setReorderBusy(false);
+                  }
+                }}
+                disabled={reorderBusy || siblingIndex < 0 || siblingIndex >= siblings.length - 1}
+                className="p-2 rounded-xl hover:bg-muted text-muted-foreground disabled:opacity-40"
+              >
+                <ArrowDown size={15} />
+              </button>
               <button onClick={() => { setEditing(c); setCreating(false); }}
                 className="p-2 rounded-xl hover:bg-muted text-muted-foreground hover:text-primary transition-colors">
                 <Pencil size={15} />

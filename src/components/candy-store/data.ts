@@ -46,6 +46,7 @@ export interface Category {
   group?: 'set' | 'single';
   showOnHome?: boolean | null;
   homeOrder?: number | null;
+  categoryOrder?: number | null;
 }
 
 export interface PackagingOption {
