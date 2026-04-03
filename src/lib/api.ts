@@ -2,16 +2,8 @@ import { getCustomerToken, getToken } from "./auth";
 
 function resolveBase(): string {
   const envBase = (import.meta as any).env?.VITE_API_URL || "";
-  if (typeof window !== "undefined") {
-    const { hostname, port } = window.location;
-    const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
-    const isDevPort = ["8080", "8081", "8082", "5173"].includes(port);
-    if (envBase) return envBase;
-    // В дев-окружении ходим напрямую на бекенд (3001), чтобы обойти сбои прокси
-    if (isLocalHost && isDevPort) return "http://localhost:3001";
-    if (!envBase) return "";
-  }
-  return envBase;
+  if (envBase) return envBase;
+  return "";
 }
 const base = resolveBase();
 
@@ -290,6 +282,19 @@ export const api = {
   },
   async changePassword(currentPassword: string, newPassword: string) {
     return j(fetch(`${base}/api/auth/change-password`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword, newPassword }) })));
+  },
+  async changeAdminEmail(currentPassword: string, newEmail: string) {
+    return j<{ ok: boolean; email: string; token: string }>(
+      fetch(`${base}/api/auth/change-email`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword, newEmail }) }))
+    );
+  },
+  async logoutAllAdminSessions(currentPassword: string) {
+    return j(fetch(`${base}/api/auth/logout-all-sessions`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword }) })));
+  },
+  async getAdminSecurity() {
+    return j<{ email: string; recentLogins: Array<{ id: number; email: string; ip: string | null; userAgent: string | null; success: boolean; createdAt: string }> }>(
+      fetch(`${base}/api/auth/admin-security`, withAuth())
+    );
   },
   async requestPasswordReset(email: string) {
     return j(fetch(`${base}/api/auth/request-reset`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) }));

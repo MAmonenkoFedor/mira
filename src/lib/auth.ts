@@ -3,21 +3,20 @@ const CUSTOMER_KEY = "customer_token";
 
 function resolveBase(): string {
   const envBase = (import.meta as any).env?.VITE_API_URL || "";
-  if (typeof window !== "undefined") {
-    const { hostname, port } = window.location;
-    const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
-    const isDevPort = ["8080", "8081", "8082", "5173"].includes(port);
-    if (envBase) return envBase;
-    if (isLocalHost && isDevPort) return "http://localhost:3001";
-    if (!envBase) return "";
-  }
-  return envBase;
+  if (envBase) return envBase;
+  return "";
 }
 const base = resolveBase();
 
+function normalizeToken(raw: string | null): string | null {
+  const token = (raw || "").trim();
+  if (!token || token === "null" || token === "undefined") return null;
+  return token;
+}
+
 export function getToken(): string | null {
   try {
-    return localStorage.getItem(KEY);
+    return normalizeToken(localStorage.getItem(KEY));
   } catch {
     return null;
   }
@@ -37,7 +36,7 @@ export function clearToken() {
 
 export function getCustomerToken(): string | null {
   try {
-    return localStorage.getItem(CUSTOMER_KEY);
+    return normalizeToken(localStorage.getItem(CUSTOMER_KEY));
   } catch {
     return null;
   }

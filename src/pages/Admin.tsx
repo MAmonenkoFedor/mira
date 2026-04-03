@@ -4,10 +4,65 @@ import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, Package, FileText, Tag, Gif
 import { toast } from 'sonner';
 import { useStore, type Article, type Order } from '@/components/candy-store/useStore';
 import { api, resolveMediaUrl } from '@/lib/api';
+import { clearToken, setToken } from '@/lib/auth';
 import { badgeToneSoftClasses, badgeToneClasses, getProductBadgeIds } from '@/components/candy-store/data';
 import type { Product, Category, Promo, PromoScope, Badge, BadgeTone, PackagingOption, Review, FeatureBlock } from '@/components/candy-store/data';
 
-type Tab = 'products' | 'categories' | 'homeCategories' | 'packaging' | 'articles' | 'promos' | 'import' | 'hero' | 'badges' | 'orders' | 'header' | 'footer' | 'reviews' | 'benefits' | 'about' | 'integrations';
+type Tab = 'products' | 'categories' | 'homeCategories' | 'packaging' | 'articles' | 'promos' | 'import' | 'hero' | 'badges' | 'orders' | 'header' | 'footer' | 'reviews' | 'benefits' | 'about' | 'integrations' | 'settings';
+
+const ADMIN_TAB_META: { key: Tab; icon: typeof Package; label: string }[] = [
+  { key: 'products', icon: Package, label: 'Товары' },
+  { key: 'categories', icon: Tag, label: 'Категории' },
+  { key: 'homeCategories', icon: Tag, label: 'Категории на главной' },
+  { key: 'packaging', icon: Gift, label: 'Упаковка' },
+  { key: 'badges', icon: BadgeCheck, label: 'Бейджи' },
+  { key: 'articles', icon: FileText, label: 'Статьи' },
+  { key: 'reviews', icon: Star, label: 'Отзывы' },
+  { key: 'orders', icon: ClipboardList, label: 'Заказы' },
+  { key: 'promos', icon: Percent, label: 'Промокоды' },
+  { key: 'hero', icon: ImageIcon, label: 'Баннер' },
+  { key: 'header', icon: Menu, label: 'Хедер' },
+  { key: 'benefits', icon: Heart, label: 'Преимущества' },
+  { key: 'about', icon: FileText, label: 'О нас' },
+  { key: 'footer', icon: ImageIcon, label: 'Футер' },
+  { key: 'integrations', icon: KeyRound, label: 'Интеграции' },
+  { key: 'settings', icon: KeyRound, label: 'Настройки' },
+  { key: 'import', icon: Upload, label: 'Импорт' },
+];
+
+const PRODUCT_VIEW_FILTER_OPTIONS: { key: 'all' | 'set' | 'single' | 'mixed' | 'inactive'; label: string }[] = [
+  { key: 'all', label: 'Все товары' },
+  { key: 'set', label: 'Только наборы' },
+  { key: 'single', label: 'Только штучные' },
+  { key: 'mixed', label: 'Смешанные' },
+  { key: 'inactive', label: 'Снятые' },
+];
+
+const CATEGORY_LIST_FILTER_OPTIONS: { key: 'all' | 'root' | 'nested' | 'set' | 'single'; label: string }[] = [
+  { key: 'all', label: 'Все' },
+  { key: 'root', label: 'Корневые' },
+  { key: 'nested', label: 'Вложенные' },
+  { key: 'set', label: 'Наборы' },
+  { key: 'single', label: 'Штучные' },
+];
+
+const getProductCategoryIds = (p: Product) => {
+  const anyP = p as any;
+  return Array.isArray(anyP?.categories) && anyP.categories.length
+    ? anyP.categories.filter(Boolean).map((x: unknown) => String(x))
+    : (anyP?.category ? [String(anyP.category)] : []);
+};
+
+const buildCategoryPathLabel = (id: string, categoriesById: Map<string, Category>) => {
+  const parts = id.split('/').filter(Boolean);
+  if (!parts.length) return id;
+  const names: string[] = [];
+  for (let i = 0; i < parts.length; i += 1) {
+    const partialId = parts.slice(0, i + 1).join('/');
+    names.push(categoriesById.get(partialId)?.name || parts[i]);
+  }
+  return names.join(' / ');
+};
 
 const getErrorStatus = (err: unknown): number | null => {
   if (!(err instanceof Error)) return null;
@@ -38,12 +93,53 @@ const getFriendlyActionError = (err: unknown, action: string) => {
   return `${action}. Проверьте заполнение полей и интернет-соединение.`;
 };
 
+const toastActionError = (err: unknown, action: string) => {
+  toast.error(getFriendlyActionError(err, action));
+};
+
 const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader();
   reader.onload = () => resolve(String(reader.result || ''));
   reader.onerror = () => reject(new Error('read_error'));
   reader.readAsDataURL(file);
 });
+
+type AppendValidatedImagesParams = {
+  files: FileList | null;
+  currentImages: string[];
+  maxImages: number;
+  maxImagesError: string;
+};
+
+const appendValidatedImages = async ({ files, currentImages, maxImages, maxImagesError }: AppendValidatedImagesParams) => {
+  if (!files || !files.length) return null;
+  if (currentImages.length >= maxImages) {
+    toast.error(maxImagesError);
+    return null;
+  }
+  const next: string[] = [];
+  for (const file of Array.from(files)) {
+    if (!file.type.startsWith('image/')) {
+      toast.error('Только изображения');
+      continue;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Макс. размер 5 МБ');
+      continue;
+    }
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      next.push(dataUrl);
+    } catch {
+      toast.error('Не удалось обработать изображение');
+    }
+  }
+  if (!next.length) return null;
+  const space = maxImages - currentImages.length;
+  const slice = next.slice(0, space);
+  if (slice.length < next.length) toast.error(maxImagesError);
+  return [...currentImages, ...slice];
+};
 
 const toWebpDataUrl = (dataUrl: string) => new Promise<string>((resolve, reject) => {
   if (dataUrl.startsWith('data:image/webp')) { resolve(dataUrl); return; }
@@ -101,6 +197,8 @@ function ImageUpload({ value, onChange }: { value: string; onChange: (v: string)
             <div className="relative">
               <img src={resolveMediaUrl(value)} alt="" className="w-16 h-16 rounded-xl object-cover border border-border" />
               <button type="button" onClick={() => onChange('')}
+                title="Удалить изображение"
+                aria-label="Удалить изображение"
                 className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center">
                 <X size={12} />
               </button>
@@ -169,6 +267,8 @@ function VideoUpload({ value, onChange }: { value: string; onChange: (v: string)
                 preload="metadata"
               />
               <button type="button" onClick={() => onChange('')}
+                title="Удалить видео"
+                aria-label="Удалить видео"
                 className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center">
                 <X size={12} />
               </button>
@@ -204,28 +304,39 @@ function VideoUpload({ value, onChange }: { value: string; onChange: (v: string)
 export default function Admin() {
   const store = useStore();
   const [tab, setTab] = useState<Tab>('products');
-  const [pwdOpen, setPwdOpen] = useState(false);
-  const [currPwd, setCurrPwd] = useState('');
-  const [newPwd, setNewPwd] = useState('');
 
-  const tabs: { key: Tab; icon: typeof Package; label: string; count: number }[] = [
-    { key: 'products', icon: Package, label: 'Товары', count: store.products.length },
-    { key: 'categories', icon: Tag, label: 'Категории', count: store.categories.length },
-    { key: 'homeCategories', icon: Tag, label: 'Категории на главной', count: store.categories.filter(c => c.showOnHome).length },
-    { key: 'packaging', icon: Gift, label: 'Упаковка', count: store.packagingOptions.length },
-    { key: 'badges', icon: BadgeCheck, label: 'Бейджи', count: store.badges.length },
-    { key: 'articles', icon: FileText, label: 'Статьи', count: store.articles.length },
-    { key: 'reviews', icon: Star, label: 'Отзывы', count: 0 },
-    { key: 'orders', icon: ClipboardList, label: 'Заказы', count: store.orders?.length || 0 },
-    { key: 'promos', icon: Percent, label: 'Промокоды', count: store.promos?.length || 0 },
-    { key: 'hero', icon: ImageIcon, label: 'Баннер', count: store.heroImages?.length || 0 },
-    { key: 'header', icon: Menu, label: 'Хедер', count: 1 },
-    { key: 'benefits', icon: Heart, label: 'Преимущества', count: store.featureBlocks?.length || 0 },
-    { key: 'about', icon: FileText, label: 'О нас', count: 1 },
-    { key: 'footer', icon: ImageIcon, label: 'Футер', count: 0 },
-    { key: 'integrations', icon: KeyRound, label: 'Интеграции', count: 4 },
-    { key: 'import', icon: Upload, label: 'Импорт', count: 0 },
-  ];
+  const tabs = useMemo(() => {
+    const counts: Record<Tab, number> = {
+      products: store.products.length,
+      categories: store.categories.length,
+      homeCategories: store.categories.filter(c => c.showOnHome).length,
+      packaging: store.packagingOptions.length,
+      badges: store.badges.length,
+      articles: store.articles.length,
+      reviews: 0,
+      orders: store.orders?.length || 0,
+      promos: store.promos?.length || 0,
+      hero: store.heroImages?.length || 0,
+      header: 1,
+      footer: 0,
+      benefits: store.featureBlocks?.length || 0,
+      about: 1,
+      integrations: 4,
+      settings: 1,
+      import: 0,
+    };
+    return ADMIN_TAB_META.map(meta => ({ ...meta, count: counts[meta.key] }));
+  }, [
+    store.products.length,
+    store.categories,
+    store.packagingOptions.length,
+    store.badges.length,
+    store.articles.length,
+    store.orders?.length,
+    store.promos?.length,
+    store.heroImages?.length,
+    store.featureBlocks?.length,
+  ]);
 
   const activeTab = tabs.find(t => t.key === tab) || tabs[0];
 
@@ -234,7 +345,7 @@ export default function Admin() {
       <div className="flex min-h-screen">
         <aside className="hidden md:flex md:flex-col w-64 shrink-0 sticky top-0 h-screen bg-card/95 backdrop-blur-md border-r border-border shadow-sm">
           <div className="h-14 flex items-center gap-2 px-4 border-b border-border">
-            <Link to="/" className="p-2 -ml-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-primary transition-colors">
+            <Link to="/" title="Вернуться на сайт" aria-label="Вернуться на сайт" className="p-2 -ml-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-primary transition-colors">
               <ArrowLeft size={18} />
             </Link>
             <div className="font-display font-bold text-foreground">🍬 Админ</div>
@@ -268,7 +379,7 @@ export default function Admin() {
           <header className="sticky top-0 z-40 bg-card/95 backdrop-blur-md border-b border-border shadow-sm">
             <div className="flex items-center justify-between h-14 px-4 md:px-6">
               <div className="flex items-center gap-3 min-w-0">
-                <Link to="/" className="md:hidden p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-primary transition-colors">
+                <Link to="/" title="Вернуться на сайт" aria-label="Вернуться на сайт" className="md:hidden p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-primary transition-colors">
                   <ArrowLeft size={20} />
                 </Link>
                 <div className="min-w-0">
@@ -279,7 +390,7 @@ export default function Admin() {
               </div>
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => setPwdOpen(v => !v)}
+                  onClick={() => setTab('settings')}
                   className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <Pencil size={14} /> Сменить пароль
@@ -296,30 +407,6 @@ export default function Admin() {
 
           <main className="flex-1 px-4 md:px-6 pt-4 pb-12">
             <div className="max-w-6xl mx-auto">
-              {pwdOpen && (
-                <div className="mb-4 p-4 border rounded-2xl bg-card">
-                  <div className="text-sm font-medium mb-2">Смена пароля</div>
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    <input type="password" placeholder="Текущий пароль" className="admin-input" value={currPwd} onChange={e => setCurrPwd(e.target.value)} />
-                    <input type="password" placeholder="Новый пароль" className="admin-input" value={newPwd} onChange={e => setNewPwd(e.target.value)} />
-                    <button
-                      onClick={async () => {
-                        try {
-                          await api.changePassword(currPwd, newPwd);
-                          setCurrPwd(''); setNewPwd(''); setPwdOpen(false);
-                          toast.success('Пароль обновлён');
-                        } catch {
-                          toast.error('Не удалось обновить пароль');
-                        }
-                      }}
-                      className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium"
-                    >
-                      Обновить
-                    </button>
-                  </div>
-                </div>
-              )}
-
               <div className="md:hidden flex gap-2 mb-6 overflow-x-auto">
                 {tabs.map(t => (
                   <button key={t.key} onClick={() => setTab(t.key)}
@@ -351,9 +438,329 @@ export default function Admin() {
               {tab === 'about' && <AboutTab store={store} />}
               {tab === 'footer' && <FooterTab store={store} />}
               {tab === 'integrations' && <IntegrationsTab />}
+              {tab === 'settings' && <SettingsTab />}
             </div>
           </main>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function SettingsTab() {
+  const [securityLoading, setSecurityLoading] = useState(true);
+  const [adminEmail, setAdminEmail] = useState('');
+  const [recentLogins, setRecentLogins] = useState<Array<{ id: number; email: string; ip: string | null; userAgent: string | null; success: boolean; createdAt: string }>>([]);
+  const [loginStatusFilter, setLoginStatusFilter] = useState<'all' | 'success' | 'failed'>('all');
+  const [loginPeriodFilter, setLoginPeriodFilter] = useState<'all' | '24h' | '7d'>('all');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [emailPassword, setEmailPassword] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [logoutPassword, setLogoutPassword] = useState('');
+  const [logoutBusy, setLogoutBusy] = useState(false);
+
+  const canSubmitPassword = currentPassword.trim().length >= 6 && newPassword.trim().length >= 6 && confirmPassword.trim().length >= 6 && !savingPassword;
+  const canSubmitEmail = emailPassword.trim().length >= 6 && newEmail.trim().length >= 5 && !savingEmail;
+  const canSubmitLogout = logoutPassword.trim().length >= 6 && !logoutBusy;
+  const filteredRecentLogins = useMemo(() => {
+    const now = Date.now();
+    return recentLogins.filter((entry) => {
+      if (loginStatusFilter === 'success' && !entry.success) return false;
+      if (loginStatusFilter === 'failed' && entry.success) return false;
+      if (loginPeriodFilter !== 'all') {
+        const timestamp = new Date(entry.createdAt).getTime();
+        if (!Number.isFinite(timestamp)) return false;
+        const periodMs = loginPeriodFilter === '24h' ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+        if (now - timestamp > periodMs) return false;
+      }
+      return true;
+    });
+  }, [loginPeriodFilter, loginStatusFilter, recentLogins]);
+
+  const loadSecurity = useCallback(async () => {
+    try {
+      setSecurityLoading(true);
+      const data = await api.getAdminSecurity();
+      setAdminEmail(data.email || '');
+      setRecentLogins(Array.isArray(data.recentLogins) ? data.recentLogins : []);
+    } catch {
+      toast.error('Не удалось загрузить настройки безопасности');
+    } finally {
+      setSecurityLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSecurity();
+  }, [loadSecurity]);
+
+  const submit = useCallback(async () => {
+    const current = currentPassword.trim();
+    const next = newPassword.trim();
+    const confirm = confirmPassword.trim();
+    if (!current || !next || !confirm) {
+      toast.error('Заполните все поля');
+      return;
+    }
+    if (next.length < 6) {
+      toast.error('Новый пароль должен быть не короче 6 символов');
+      return;
+    }
+    if (next !== confirm) {
+      toast.error('Новый пароль и подтверждение не совпадают');
+      return;
+    }
+    if (next === current) {
+      toast.error('Новый пароль должен отличаться от текущего');
+      return;
+    }
+    try {
+      setSavingPassword(true);
+      await api.changePassword(current, next);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      toast.success('Пароль администратора обновлён');
+    } catch (err) {
+      const status = getErrorStatus(err);
+      const detail = getErrorDetail(err);
+      if (status === 400 && detail.includes('invalid_password')) {
+        toast.error('Текущий пароль введён неверно');
+      } else {
+        toast.error(getFriendlyActionError(err, 'Не удалось обновить пароль'));
+      }
+    } finally {
+      setSavingPassword(false);
+    }
+  }, [confirmPassword, currentPassword, newPassword]);
+
+  const submitEmail = useCallback(async () => {
+    const pwd = emailPassword.trim();
+    const email = newEmail.trim().toLowerCase();
+    if (!pwd || !email) {
+      toast.error('Введите новый email и текущий пароль');
+      return;
+    }
+    try {
+      setSavingEmail(true);
+      const data = await api.changeAdminEmail(pwd, email);
+      if (data?.token) setToken(data.token);
+      setAdminEmail(data?.email || email);
+      setEmailPassword('');
+      setNewEmail('');
+      toast.success('Email администратора обновлён');
+      await loadSecurity();
+    } catch (err) {
+      const status = getErrorStatus(err);
+      const detail = getErrorDetail(err);
+      if (status === 400 && detail.includes('invalid_password')) {
+        toast.error('Текущий пароль введён неверно');
+      } else if (status === 409 && detail.includes('email_exists')) {
+        toast.error('Этот email уже используется');
+      } else if (status === 400 && detail.includes('same_email')) {
+        toast.error('Новый email совпадает с текущим');
+      } else {
+        toast.error(getFriendlyActionError(err, 'Не удалось обновить email'));
+      }
+    } finally {
+      setSavingEmail(false);
+    }
+  }, [emailPassword, loadSecurity, newEmail]);
+
+  const submitLogoutAll = useCallback(async () => {
+    const pwd = logoutPassword.trim();
+    if (!pwd) {
+      toast.error('Введите текущий пароль');
+      return;
+    }
+    try {
+      setLogoutBusy(true);
+      await api.logoutAllAdminSessions(pwd);
+      clearToken();
+      toast.success('Все активные сессии закрыты. Войдите снова.');
+      window.location.reload();
+    } catch (err) {
+      const status = getErrorStatus(err);
+      const detail = getErrorDetail(err);
+      if (status === 400 && detail.includes('invalid_password')) {
+        toast.error('Текущий пароль введён неверно');
+      } else {
+        toast.error(getFriendlyActionError(err, 'Не удалось завершить сессии'));
+      }
+    } finally {
+      setLogoutBusy(false);
+    }
+  }, [logoutPassword]);
+
+  return (
+    <div className="grid gap-4">
+      <div className="bg-card rounded-2xl border border-border/40 shadow-sm p-5 max-w-xl">
+        <div className="font-display text-lg font-semibold mb-1">Смена пароля администратора</div>
+        <form
+          className="grid gap-3"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            await submit();
+          }}
+        >
+          <input
+            type="password"
+            placeholder="Текущий пароль"
+            className="admin-input"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            autoComplete="current-password"
+          />
+          <input
+            type="password"
+            placeholder="Новый пароль (минимум 6 символов)"
+            className="admin-input"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            autoComplete="new-password"
+          />
+          <input
+            type="password"
+            placeholder="Подтверждение нового пароля"
+            className="admin-input"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            autoComplete="new-password"
+          />
+          <button
+            type="submit"
+            disabled={!canSubmitPassword}
+            className="px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium disabled:opacity-60"
+          >
+            {savingPassword ? 'Сохраняем...' : 'Обновить пароль'}
+          </button>
+        </form>
+      </div>
+
+      <div className="bg-card rounded-2xl border border-border/40 shadow-sm p-5 max-w-xl">
+        <div className="font-display text-lg font-semibold mb-1">Email администратора</div>
+        <div className="text-sm text-muted-foreground mb-4">Текущий: {securityLoading ? 'Загрузка...' : (adminEmail || '—')}</div>
+        <form
+          className="grid gap-3"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            await submitEmail();
+          }}
+        >
+          <input
+            type="email"
+            placeholder="Новый email"
+            className="admin-input"
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+            autoComplete="email"
+          />
+          <input
+            type="password"
+            placeholder="Текущий пароль"
+            className="admin-input"
+            value={emailPassword}
+            onChange={(e) => setEmailPassword(e.target.value)}
+            autoComplete="current-password"
+          />
+          <button
+            type="submit"
+            disabled={!canSubmitEmail}
+            className="px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium disabled:opacity-60"
+          >
+            {savingEmail ? 'Сохраняем...' : 'Обновить email'}
+          </button>
+        </form>
+      </div>
+
+      <div className="bg-card rounded-2xl border border-border/40 shadow-sm p-5 max-w-xl">
+        <div className="font-display text-lg font-semibold mb-1">Завершить все сессии</div>
+        <div className="text-sm text-muted-foreground mb-4">Выход со всех устройств и браузеров</div>
+        <form
+          className="grid gap-3"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            await submitLogoutAll();
+          }}
+        >
+          <input
+            type="password"
+            placeholder="Текущий пароль"
+            className="admin-input"
+            value={logoutPassword}
+            onChange={(e) => setLogoutPassword(e.target.value)}
+            autoComplete="current-password"
+          />
+          <button
+            type="submit"
+            disabled={!canSubmitLogout}
+            className="px-4 py-2.5 rounded-xl bg-destructive text-destructive-foreground text-sm font-medium disabled:opacity-60"
+          >
+            {logoutBusy ? 'Выполняем...' : 'Выйти везде'}
+          </button>
+        </form>
+      </div>
+
+      <div className="bg-card rounded-2xl border border-border/40 shadow-sm p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <div>
+            <div className="font-display text-lg font-semibold">Последние входы</div>
+            {!securityLoading && (
+              <div className="text-xs text-muted-foreground mt-0.5">Показано: {filteredRecentLogins.length} из {recentLogins.length}</div>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={loginStatusFilter}
+              onChange={(e) => setLoginStatusFilter(e.target.value as 'all' | 'success' | 'failed')}
+              className="px-2.5 py-1.5 rounded-lg border border-border bg-background text-xs text-foreground"
+            >
+              <option value="all">Все статусы</option>
+              <option value="success">Только успешные</option>
+              <option value="failed">Только ошибки</option>
+            </select>
+            <select
+              value={loginPeriodFilter}
+              onChange={(e) => setLoginPeriodFilter(e.target.value as 'all' | '24h' | '7d')}
+              className="px-2.5 py-1.5 rounded-lg border border-border bg-background text-xs text-foreground"
+            >
+              <option value="all">За всё время</option>
+              <option value="24h">За 24 часа</option>
+              <option value="7d">За 7 дней</option>
+            </select>
+            <button
+              onClick={() => { void loadSecurity(); }}
+              className="px-3 py-1.5 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Обновить
+            </button>
+          </div>
+        </div>
+        {securityLoading ? (
+          <div className="text-sm text-muted-foreground">Загружаем историю входов...</div>
+        ) : filteredRecentLogins.length === 0 ? (
+          <div className="text-sm text-muted-foreground">История входов пока пуста.</div>
+        ) : (
+          <div className="grid gap-2">
+            {filteredRecentLogins.map((entry) => (
+              <div key={entry.id} className="border border-border/40 rounded-xl p-3 text-sm bg-background/40">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`px-2 py-0.5 rounded-full text-xs ${entry.success ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                    {entry.success ? 'Успешно' : 'Ошибка'}
+                  </span>
+                  <span className="text-muted-foreground">{new Date(entry.createdAt).toLocaleString('ru-RU')}</span>
+                </div>
+                <div className="mt-1 break-all">{entry.email}</div>
+                <div className="text-muted-foreground break-all">IP: {entry.ip || '—'}</div>
+                <div className="text-muted-foreground break-all">User-Agent: {entry.userAgent || '—'}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -373,19 +780,36 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
   const [showQuickNav, setShowQuickNav] = useState(false);
   const filtersRef = useRef<HTMLDivElement | null>(null);
   const pageSize = 20;
+  const searchQuery = useMemo(() => search.trim().toLowerCase(), [search]);
+  const closeEditor = useCallback(() => {
+    setEditing(null);
+    setCreating(false);
+  }, []);
+  const openCreate = useCallback(() => {
+    setCreating(true);
+    setEditing(null);
+  }, []);
+  const openEdit = useCallback((product: Product) => {
+    setEditing(product);
+    setCreating(false);
+  }, []);
+  const resetFilters = useCallback(() => {
+    setSearch('');
+    setCategoryFilter('all');
+    setBadgeFilter('all');
+    setSort('popular');
+    setShowInactive(false);
+    setViewFilter('all');
+  }, []);
 
   const categoriesById = useMemo(() => {
     return new Map(store.categories.map(c => [c.id, c]));
   }, [store.categories]);
+  const badgeById = useMemo(() => {
+    return new Map(store.badges.map(b => [b.id, b]));
+  }, [store.badges]);
   const getCategoryPathLabel = useCallback((id: string) => {
-    const parts = id.split('/').filter(Boolean);
-    if (!parts.length) return id;
-    const names: string[] = [];
-    for (let i = 0; i < parts.length; i += 1) {
-      const partialId = parts.slice(0, i + 1).join('/');
-      names.push(categoriesById.get(partialId)?.name || parts[i]);
-    }
-    return names.join(' / ');
+    return buildCategoryPathLabel(id, categoriesById);
   }, [categoriesById]);
   const categoriesSorted = useMemo(() => {
     return [...store.categories]
@@ -393,13 +817,7 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
       .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'ru'));
   }, [store.categories, getCategoryPathLabel]);
 
-  const getCategories = (p: Product) => {
-    const anyP = p as any;
-    const list: string[] = Array.isArray(anyP?.categories) && anyP.categories.length
-      ? anyP.categories.filter(Boolean).map((x: unknown) => String(x))
-      : (anyP?.category ? [String(anyP.category)] : []);
-    return list;
-  };
+  const getCategories = useCallback((p: Product) => getProductCategoryIds(p), []);
   const getProductKind = useCallback((p: Product) => {
     const ids = getCategories(p);
     if (!ids.length) return 'mixed';
@@ -409,7 +827,7 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
       if (groups.has('single')) return 'single';
     }
     return 'mixed';
-  }, [categoriesById]);
+  }, [categoriesById, getCategories]);
 
   const filtered = useMemo(() => {
     let list = [...store.products];
@@ -429,11 +847,10 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
       });
     }
 
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
+    if (searchQuery) {
       list = list.filter(p => {
         const sku = (p.sku || '').toLowerCase();
-        return p.name.toLowerCase().includes(q) || String(p.id).includes(q) || sku.includes(q);
+        return p.name.toLowerCase().includes(searchQuery) || String(p.id).includes(searchQuery) || sku.includes(searchQuery);
       });
     }
     if (viewFilter === 'inactive') {
@@ -457,7 +874,7 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
     }
 
     return list;
-  }, [store.products, showInactive, categoryFilter, badgeFilter, search, sort, viewFilter, getProductKind]);
+  }, [store.products, showInactive, categoryFilter, badgeFilter, searchQuery, sort, viewFilter, getProductKind, getCategories]);
 
   useEffect(() => {
     setPage(1);
@@ -517,11 +934,11 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
             </select>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => { setSearch(''); setCategoryFilter('all'); setBadgeFilter('all'); setSort('popular'); setShowInactive(false); setViewFilter('all'); }}
+            <button onClick={resetFilters}
               className="h-10 px-3 rounded-xl text-sm border border-border text-muted-foreground hover:bg-muted transition-colors flex items-center gap-2">
               <RotateCcw size={14} /> Сбросить
             </button>
-            <button onClick={() => { setCreating(true); setEditing(null); }}
+            <button onClick={openCreate}
               className="h-10 px-4 rounded-2xl bg-primary text-primary-foreground text-sm font-medium hover:scale-[1.02] active:scale-95 transition-transform flex items-center gap-2">
               <Plus size={16} /> Добавить товар
             </button>
@@ -533,13 +950,7 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
       </div>
 
       <div className="mb-3 flex flex-wrap gap-2">
-        {[
-          { key: 'all', label: 'Все товары' },
-          { key: 'set', label: 'Только наборы' },
-          { key: 'single', label: 'Только штучные' },
-          { key: 'mixed', label: 'Смешанные' },
-          { key: 'inactive', label: 'Снятые' },
-        ].map(item => (
+        {PRODUCT_VIEW_FILTER_OPTIONS.map(item => (
           <button
             key={item.key}
             type="button"
@@ -565,7 +976,9 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
                 </div>
                 <button
                   type="button"
-                  onClick={() => { setEditing(null); setCreating(false); }}
+                  onClick={closeEditor}
+                  title="Закрыть окно товара"
+                  aria-label="Закрыть окно товара"
                   className="p-2 rounded-xl hover:bg-muted text-muted-foreground"
                 >
                   <X size={16} />
@@ -580,12 +993,12 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
                   try {
                     if (editing) { await store.updateProduct(editing.id, data); toast.success('Товар обновлён'); }
                     else { await store.addProduct(data as Omit<Product, 'id'>); toast.success('Товар добавлен'); }
-                    setEditing(null); setCreating(false);
+                    closeEditor();
                   } catch (err) {
                     toast.error(getFriendlyActionError(err, 'Не удалось сохранить товар'));
                   }
                 }}
-                onCancel={() => { setEditing(null); setCreating(false); }}
+                onCancel={closeEditor}
               />
             </div>
           </div>
@@ -594,7 +1007,7 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
 
       <div className="grid gap-3">
         {visible.map(p => (
-          <div key={p.id} onClick={() => { setEditing(p); setCreating(false); }}
+          <div key={p.id} onClick={() => openEdit(p)}
             className={`flex items-center gap-4 bg-card rounded-2xl p-4 border border-border/40 shadow-sm cursor-pointer hover:border-primary/40 transition-colors ${
               p.active === false ? 'opacity-70' : ''
             }`}>
@@ -606,7 +1019,7 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-destructive/10 text-destructive">снят</span>
                 )}
                 {getProductBadgeIds(p).map(id => {
-                  const badge = store.badges.find(b => b.id === id);
+                  const badge = badgeById.get(id);
                   if (!badge) return null;
                   return (
                     <span key={badge.id} className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${badge.active ? badgeToneSoftClasses[badge.tone] : 'bg-muted text-muted-foreground'}`}>
@@ -631,7 +1044,9 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
               </div>
             </div>
             <div className="flex gap-1.5">
-              <button onClick={(e) => { e.stopPropagation(); setEditing(p); setCreating(false); }}
+              <button onClick={(e) => { e.stopPropagation(); openEdit(p); }}
+                title="Редактировать товар"
+                aria-label="Редактировать товар"
                 className="p-2 rounded-xl hover:bg-muted text-muted-foreground hover:text-primary transition-colors">
                 <Pencil size={15} />
               </button>
@@ -641,11 +1056,11 @@ function ProductsTab({ store }: { store: ReturnType<typeof useStore> }) {
                   await store.deleteProduct(p.id);
                   toast.success('Удалено');
                 } catch (err) {
-                  const code = err instanceof Error ? err.message : '';
-                  if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-                  else toast.error('Не удалось удалить товар');
+                  toastActionError(err, 'Не удалось удалить товар');
                 }
               }}
+                title="Удалить товар"
+                aria-label="Удалить товар"
                 className="p-2 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
                 <Trash2 size={15} />
               </button>
@@ -769,9 +1184,7 @@ function HeroTab({ store }: { store: ReturnType<typeof useStore> }) {
           });
           toast.success('Текст хиро обновлён');
         } catch (err) {
-          const code = err instanceof Error ? err.message : '';
-          if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-          else toast.error('Не удалось обновить текст');
+          toastActionError(err, 'Не удалось обновить текст');
         }
       }} className="bg-card rounded-2xl p-5 border border-border/40 shadow-sm grid gap-4">
         <div className="font-display font-semibold">Текст хиро-блока</div>
@@ -924,9 +1337,7 @@ function HeroTab({ store }: { store: ReturnType<typeof useStore> }) {
                     try {
                       await store.updateHeroImage(img.id, { active: e.target.checked });
                     } catch (err) {
-                      const code = err instanceof Error ? err.message : '';
-                      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-                      else toast.error('Не удалось обновить баннер');
+                      toastActionError(err, 'Не удалось обновить баннер');
                     }
                   }}
                 />
@@ -938,30 +1349,24 @@ function HeroTab({ store }: { store: ReturnType<typeof useStore> }) {
                     const newPos = Math.max(0, img.position - 1);
                     await store.updateHeroImage(img.id, { position: newPos });
                   } catch (err) {
-                    const code = err instanceof Error ? err.message : '';
-                    if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-                    else toast.error('Не удалось обновить баннер');
+                    toastActionError(err, 'Не удалось обновить баннер');
                   }
-                }} className="p-2 rounded-xl hover:bg-muted text-muted-foreground"><ArrowUp size={15} /></button>
+                }} title="Поднять баннер выше" aria-label="Поднять баннер выше" className="p-2 rounded-xl hover:bg-muted text-muted-foreground"><ArrowUp size={15} /></button>
                 <button onClick={async () => {
                   try {
                     await store.updateHeroImage(img.id, { position: img.position + 1 });
                   } catch (err) {
-                    const code = err instanceof Error ? err.message : '';
-                    if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-                    else toast.error('Не удалось обновить баннер');
+                    toastActionError(err, 'Не удалось обновить баннер');
                   }
-                }} className="p-2 rounded-xl hover:bg-muted text-muted-foreground"><ArrowDown size={15} /></button>
+                }} title="Опустить баннер ниже" aria-label="Опустить баннер ниже" className="p-2 rounded-xl hover:bg-muted text-muted-foreground"><ArrowDown size={15} /></button>
                 <button onClick={async () => {
                   try {
                     await store.deleteHeroImage(img.id);
                     toast.success('Удалено');
                   } catch (err) {
-                    const code = err instanceof Error ? err.message : '';
-                    if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-                    else toast.error('Не удалось удалить баннер');
+                    toastActionError(err, 'Не удалось удалить баннер');
                   }
-                }} className="p-2 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={15} /></button>
+                }} title="Удалить баннер" aria-label="Удалить баннер" className="p-2 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={15} /></button>
               </div>
             </div>
             <div className="grid gap-1">
@@ -1117,9 +1522,7 @@ function PromoBannersTab({ store }: { store: ReturnType<typeof useStore> }) {
                     try {
                       await store.updatePromoBanner(img.id, { active: e.target.checked });
                     } catch (err) {
-                      const code = err instanceof Error ? err.message : '';
-                      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-                      else toast.error('Не удалось обновить баннер');
+                      toastActionError(err, 'Не удалось обновить баннер');
                     }
                   }}
                 />
@@ -1131,30 +1534,24 @@ function PromoBannersTab({ store }: { store: ReturnType<typeof useStore> }) {
                     const newPos = Math.max(0, img.position - 1);
                     await store.updatePromoBanner(img.id, { position: newPos });
                   } catch (err) {
-                    const code = err instanceof Error ? err.message : '';
-                    if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-                    else toast.error('Не удалось обновить баннер');
+                    toastActionError(err, 'Не удалось обновить баннер');
                   }
-                }} className="p-2 rounded-xl hover:bg-muted text-muted-foreground"><ArrowUp size={15} /></button>
+                }} title="Поднять баннер выше" aria-label="Поднять баннер выше" className="p-2 rounded-xl hover:bg-muted text-muted-foreground"><ArrowUp size={15} /></button>
                 <button onClick={async () => {
                   try {
                     await store.updatePromoBanner(img.id, { position: img.position + 1 });
                   } catch (err) {
-                    const code = err instanceof Error ? err.message : '';
-                    if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-                    else toast.error('Не удалось обновить баннер');
+                    toastActionError(err, 'Не удалось обновить баннер');
                   }
-                }} className="p-2 rounded-xl hover:bg-muted text-muted-foreground"><ArrowDown size={15} /></button>
+                }} title="Опустить баннер ниже" aria-label="Опустить баннер ниже" className="p-2 rounded-xl hover:bg-muted text-muted-foreground"><ArrowDown size={15} /></button>
                 <button onClick={async () => {
                   try {
                     await store.deletePromoBanner(img.id);
                     toast.success('Удалено');
                   } catch (err) {
-                    const code = err instanceof Error ? err.message : '';
-                    if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-                    else toast.error('Не удалось удалить баннер');
+                    toastActionError(err, 'Не удалось удалить баннер');
                   }
-                }} className="p-2 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={15} /></button>
+                }} title="Удалить баннер" aria-label="Удалить баннер" className="p-2 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={15} /></button>
               </div>
             </div>
             <div className="grid gap-1">
@@ -1197,9 +1594,7 @@ function ImportTab({ store }: { store: ReturnType<typeof useStore> }) {
       }
       toast.success('Категории импортированы');
     } catch (err) {
-      const code = err instanceof Error ? err.message : '';
-      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-      else toast.error('Ошибка импорта категорий: ожидается JSON массив');
+      toastActionError(err, 'Ошибка импорта категорий: ожидается JSON массив');
     }
   };
   const importProducts = async () => {
@@ -1233,9 +1628,7 @@ function ImportTab({ store }: { store: ReturnType<typeof useStore> }) {
       }
       toast.success('Товары импортированы');
     } catch (err) {
-      const code = err instanceof Error ? err.message : '';
-      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-      else toast.error('Ошибка импорта товаров: ожидается JSON массив');
+      toastActionError(err, 'Ошибка импорта товаров: ожидается JSON массив');
     }
   };
   return (
@@ -1356,6 +1749,7 @@ function ProductForm({ product, categories: cats, badges, packagingOptions, onSa
   });
   const set = <K extends keyof ProductFormState>(k: K, v: ProductFormState[K]) => setForm(f => ({ ...f, [k]: v }));
   const [categorySearch, setCategorySearch] = useState('');
+  const categorySearchQuery = useMemo(() => categorySearch.trim().toLowerCase(), [categorySearch]);
   const toggleCategory = (id: string) => {
     setForm(prev => {
       const has = prev.categories.includes(id);
@@ -1372,14 +1766,7 @@ function ProductForm({ product, categories: cats, badges, packagingOptions, onSa
   };
   const categoriesById = useMemo(() => new Map(cats.map(c => [c.id, c])), [cats]);
   const getCategoryPathLabel = useCallback((id: string) => {
-    const parts = id.split('/').filter(Boolean);
-    if (!parts.length) return id;
-    const names: string[] = [];
-    for (let i = 0; i < parts.length; i += 1) {
-      const partialId = parts.slice(0, i + 1).join('/');
-      names.push(categoriesById.get(partialId)?.name || parts[i]);
-    }
-    return names.join(' / ');
+    return buildCategoryPathLabel(id, categoriesById);
   }, [categoriesById]);
   const categoriesSorted = useMemo(() => {
     return [...cats]
@@ -1387,14 +1774,13 @@ function ProductForm({ product, categories: cats, badges, packagingOptions, onSa
       .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, 'ru'));
   }, [cats, getCategoryPathLabel]);
   const filteredCategories = useMemo(() => {
-    const q = categorySearch.trim().toLowerCase();
-    if (!q) return categoriesSorted;
+    if (!categorySearchQuery) return categoriesSorted;
     return categoriesSorted.filter(c => (
-      c.pathLabel.toLowerCase().includes(q) ||
-      c.id.toLowerCase().includes(q) ||
-      c.name.toLowerCase().includes(q)
+      c.pathLabel.toLowerCase().includes(categorySearchQuery) ||
+      c.id.toLowerCase().includes(categorySearchQuery) ||
+      c.name.toLowerCase().includes(categorySearchQuery)
     ));
-  }, [categoriesSorted, categorySearch]);
+  }, [categoriesSorted, categorySearchQuery]);
   const selectedCategories = useMemo(() => {
     return [...form.categories]
       .map(id => ({ id, pathLabel: getCategoryPathLabel(id), emoji: categoriesById.get(id)?.emoji || '' }))
@@ -1753,6 +2139,8 @@ function PackagingTab({ store }: { store: ReturnType<typeof useStore> }) {
             </label>
             <div className="flex gap-1.5">
               <button onClick={() => { setEditing(p); setCreating(false); }}
+                title="Редактировать упаковку"
+                aria-label="Редактировать упаковку"
                 className="p-2 rounded-xl hover:bg-muted text-muted-foreground hover:text-primary transition-colors">
                 <Pencil size={15} />
               </button>
@@ -1766,6 +2154,8 @@ function PackagingTab({ store }: { store: ReturnType<typeof useStore> }) {
                   else toast.error('Не удалось удалить упаковку');
                 }
               }}
+                title="Удалить упаковку"
+                aria-label="Удалить упаковку"
                 className="p-2 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
                 <Trash2 size={15} />
               </button>
@@ -1865,9 +2255,20 @@ function PackagingForm({ option, onSave, onCancel }: {
 function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
   const [editing, setEditing] = useState<Category | null>(null);
   const [creating, setCreating] = useState(false);
+  const [createDraft, setCreateDraft] = useState<{
+    parentId?: string;
+    group?: 'set' | 'single';
+    showOnHome?: boolean;
+    name?: string;
+    slug?: string;
+  } | null>(null);
   const [groupBusyId, setGroupBusyId] = useState<string | null>(null);
   const [reorderBusy, setReorderBusy] = useState(false);
+  const [draggedCategoryId, setDraggedCategoryId] = useState<string | null>(null);
+  const [dragOverCategoryId, setDragOverCategoryId] = useState<string | null>(null);
   const [listFilter, setListFilter] = useState<'all' | 'root' | 'nested' | 'set' | 'single'>('all');
+  const [search, setSearch] = useState('');
+  const searchQuery = useMemo(() => search.trim().toLowerCase(), [search]);
 
   const colorOptions = [
     { value: 'candy-pink', label: '🩷 Розовый' },
@@ -1880,14 +2281,7 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
     return new Map(store.categories.map(c => [c.id, c]));
   }, [store.categories]);
   const getPathLabel = useCallback((id: string) => {
-    const parts = id.split('/').filter(Boolean);
-    if (!parts.length) return id;
-    const names: string[] = [];
-    for (let i = 0; i < parts.length; i += 1) {
-      const partialId = parts.slice(0, i + 1).join('/');
-      names.push(categoriesById.get(partialId)?.name || parts[i]);
-    }
-    return names.join(' / ');
+    return buildCategoryPathLabel(id, categoriesById);
   }, [categoriesById]);
   const compareCategoriesByOrder = useCallback((a: Category, b: Category) => {
     const ao = typeof a.categoryOrder === 'number' ? a.categoryOrder : Number.POSITIVE_INFINITY;
@@ -1910,9 +2304,11 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
   }, [store.categories, compareCategoriesByOrder]);
   const categoriesSorted = useMemo(() => {
     const ordered: Array<Category & { pathLabel: string; depth: number; parentId: string }> = [];
+    const visited = new Set<string>();
     const appendChildren = (parentId: string, depth: number) => {
       const children = childrenByParent.get(parentId) || [];
       for (const child of children) {
+        visited.add(child.id);
         ordered.push({
           ...child,
           pathLabel: getPathLabel(child.id),
@@ -1923,23 +2319,126 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
       }
     };
     appendChildren('', 0);
+    const orphaned = store.categories
+      .filter((c) => !visited.has(c.id))
+      .sort(compareCategoriesByOrder);
+    for (const orphan of orphaned) {
+      const parentId = orphan.id.includes('/') ? orphan.id.split('/').slice(0, -1).join('/') : '';
+      ordered.push({
+        ...orphan,
+        pathLabel: getPathLabel(orphan.id),
+        depth: Math.max(orphan.id.split('/').length - 1, 0),
+        parentId,
+      });
+    }
     return ordered;
-  }, [childrenByParent, getPathLabel]);
+  }, [childrenByParent, compareCategoriesByOrder, getPathLabel, store.categories]);
+  const parentIdByCategoryId = useMemo(() => {
+    return new Map(categoriesSorted.map((category) => [category.id, category.parentId]));
+  }, [categoriesSorted]);
+  const siblingIndexById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const siblings of childrenByParent.values()) {
+      siblings.forEach((item, index) => map.set(item.id, index));
+    }
+    return map;
+  }, [childrenByParent]);
   const visibleCategories = useMemo(() => {
     return categoriesSorted.filter(c => {
-      if (listFilter === 'root') return !c.id.includes('/');
-      if (listFilter === 'nested') return c.id.includes('/');
-      if (listFilter === 'set') return c.group === 'set';
-      if (listFilter === 'single') return c.group === 'single';
-      return true;
+      const matchesFilter =
+        (listFilter === 'root' && !c.id.includes('/'))
+        || (listFilter === 'nested' && c.id.includes('/'))
+        || (listFilter === 'set' && c.group === 'set')
+        || (listFilter === 'single' && c.group === 'single')
+        || listFilter === 'all';
+      if (!matchesFilter) return false;
+      if (!searchQuery) return true;
+      const text = `${c.id} ${c.name} ${c.pathLabel}`.toLowerCase();
+      return text.includes(searchQuery);
     });
-  }, [categoriesSorted, listFilter]);
+  }, [categoriesSorted, listFilter, searchQuery]);
+  const rootCount = useMemo(() => store.categories.filter(c => !c.id.includes('/')).length, [store.categories]);
+  const nestedCount = useMemo(() => store.categories.filter(c => c.id.includes('/')).length, [store.categories]);
+  const resetFilters = useCallback(() => {
+    setListFilter('all');
+    setSearch('');
+  }, []);
+  const closeEditor = useCallback(() => {
+    setEditing(null);
+    setCreating(false);
+    setCreateDraft(null);
+  }, []);
+  const getProductCategories = useCallback((p: Product) => getProductCategoryIds(p), []);
+  const updateSiblingOrder = useCallback(async (siblings: Category[], fromIndex: number, toIndex: number) => {
+    if (reorderBusy || fromIndex < 0 || toIndex < 0 || toIndex >= siblings.length || fromIndex === toIndex) return;
+    try {
+      setReorderBusy(true);
+      const next = [...siblings];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      await Promise.all(next.map((item, idx) => store.updateCategory(item.id, { categoryOrder: idx + 1 })));
+      toast.success('Порядок категорий обновлен');
+    } catch (err) {
+      toast.error(getFriendlyActionError(err, 'Не удалось изменить порядок категорий'));
+    } finally {
+      setReorderBusy(false);
+    }
+  }, [reorderBusy, store]);
+  const deleteCategoryWithConfirm = useCallback(async (category: Category) => {
+    const affectedCategoryIds = store.categories
+      .filter((item) => item.id === category.id || item.id.startsWith(`${category.id}/`))
+      .map((item) => item.id);
+    const affectedCategoryIdSet = new Set(affectedCategoryIds);
+    const affectedProducts = store.products.filter((product) => {
+      const ids = getProductCategories(product);
+      return ids.some((id) => affectedCategoryIdSet.has(id));
+    });
+    const message = [
+      `Удалить категорию "${category.name}"?`,
+      affectedCategoryIds.length > 1 ? `Будет удалено категорий: ${affectedCategoryIds.length}` : null,
+      affectedProducts.length ? `Товаров с этой категорией: ${affectedProducts.length}` : null,
+    ].filter(Boolean).join('\n');
+    if (!window.confirm(message)) return;
+    try {
+      await store.deleteCategory(category.id);
+      toast.success('Удалено');
+    } catch (err) {
+      const code = err instanceof Error ? err.message : '';
+      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+      else toast.error(getFriendlyActionError(err, 'Не удалось удалить категорию'));
+    }
+  }, [getProductCategories, store]);
+  const openCreateChild = useCallback((parent: Category) => {
+    setEditing(null);
+    setCreateDraft({
+      parentId: parent.id,
+      group: parent.group,
+      showOnHome: false,
+    });
+    setCreating(true);
+  }, []);
+  const moveCategoryByDrop = useCallback(async (siblings: Category[], fromId: string, toId: string) => {
+    const fromIndex = siblings.findIndex((item) => item.id === fromId);
+    const toIndex = siblings.findIndex((item) => item.id === toId);
+    await updateSiblingOrder(siblings, fromIndex, toIndex);
+  }, [updateSiblingOrder]);
   return (
     <div>
-      <button onClick={() => { setCreating(true); setEditing(null); }}
-        className="mb-4 flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-primary text-primary-foreground text-sm font-medium hover:scale-[1.02] active:scale-95 transition-transform">
-        <Plus size={16} /> Добавить категорию
-      </button>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <button onClick={() => { setCreating(true); setEditing(null); setCreateDraft(null); }}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-primary text-primary-foreground text-sm font-medium hover:scale-[1.02] active:scale-95 transition-transform">
+          <Plus size={16} /> Добавить категорию
+        </button>
+        <div className="px-3 py-2 rounded-2xl border border-border/50 bg-card text-xs text-muted-foreground">
+          Всего: {store.categories.length}
+        </div>
+        <div className="px-3 py-2 rounded-2xl border border-border/50 bg-card text-xs text-muted-foreground">
+          Корневые: {rootCount}
+        </div>
+        <div className="px-3 py-2 rounded-2xl border border-border/50 bg-card text-xs text-muted-foreground">
+          Вложенные: {nestedCount}
+        </div>
+      </div>
 
       {(creating || editing) && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px] p-4 sm:p-6 overflow-y-auto">
@@ -1951,7 +2450,9 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
                 </div>
                 <button
                   type="button"
-                  onClick={() => { setEditing(null); setCreating(false); }}
+                  onClick={closeEditor}
+                  title="Закрыть окно категории"
+                  aria-label="Закрыть окно категории"
                   className="p-2 rounded-xl hover:bg-muted text-muted-foreground"
                 >
                   <X size={16} />
@@ -1959,36 +2460,46 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
               </div>
               <CategoryForm
                 category={editing}
+                draft={createDraft}
                 categories={store.categories}
                 colorOptions={colorOptions}
                 onSave={async (data) => {
                   try {
                     if (editing) { await store.updateCategory(editing.id, data); toast.success('Категория обновлена'); }
                     else { await store.addCategory(data as Omit<Category, 'id'> & { id?: string }); toast.success('Категория добавлена'); }
-                    setEditing(null); setCreating(false);
+                    closeEditor();
                   } catch (err) {
                     toast.error(getFriendlyActionError(err, 'Не удалось сохранить категорию'));
                   }
                 }}
-                onCancel={() => { setEditing(null); setCreating(false); }}
+                onCancel={closeEditor}
               />
             </div>
           </div>
         </div>
       )}
 
-      <div className="mb-3 flex flex-wrap gap-2">
-        {[
-          { key: 'all', label: 'Все' },
-          { key: 'root', label: 'Корневые' },
-          { key: 'nested', label: 'Вложенные' },
-          { key: 'set', label: 'Наборы' },
-          { key: 'single', label: 'Штучные' },
-        ].map(item => (
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="admin-input max-w-sm"
+          placeholder="Поиск по названию, id или пути"
+        />
+        {(search || listFilter !== 'all') && (
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="px-3 py-2 rounded-xl text-xs border border-border text-muted-foreground hover:bg-muted transition-colors"
+          >
+            Сбросить фильтры
+          </button>
+        )}
+        {CATEGORY_LIST_FILTER_OPTIONS.map(item => (
           <button
             key={item.key}
             type="button"
-            onClick={() => setListFilter(item.key as typeof listFilter)}
+            onClick={() => setListFilter(item.key)}
             className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${
               listFilter === item.key
                 ? 'bg-primary text-primary-foreground border-primary'
@@ -1998,6 +2509,9 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
             {item.label}
           </button>
         ))}
+        <div className="ml-auto text-xs text-muted-foreground">
+          Показано: {visibleCategories.length}
+        </div>
       </div>
 
       <div className="grid gap-3">
@@ -2007,13 +2521,48 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
           const parent = parentId ? categoriesById.get(parentId) : null;
           const children = childrenByParent.get(c.id) || [];
           const siblings = childrenByParent.get(parentId) || [];
-          const siblingIndex = siblings.findIndex(item => item.id === c.id);
+          const siblingIndex = siblingIndexById.get(c.id) ?? -1;
+          const canDropHere = Boolean(draggedCategoryId && draggedCategoryId !== c.id && parentIdByCategoryId.get(draggedCategoryId) === parentId);
           return (
           <div
             key={c.id}
-            className="flex items-center gap-4 bg-card rounded-2xl p-4 border border-border/40 shadow-sm"
+            className={`flex items-center gap-4 bg-card rounded-2xl p-4 border shadow-sm transition-colors ${
+              dragOverCategoryId === c.id && canDropHere
+                ? 'border-primary/50 bg-primary/5'
+                : 'border-border/40'
+            }`}
             style={{ marginLeft: `${depth * 16}px` }}
+            onDragOver={(e) => {
+              if (!draggedCategoryId || !canDropHere) return;
+              e.preventDefault();
+              setDragOverCategoryId(c.id);
+            }}
+            onDragLeave={() => {
+              if (dragOverCategoryId === c.id) setDragOverCategoryId(null);
+            }}
+            onDrop={async (e) => {
+              e.preventDefault();
+              if (!draggedCategoryId || !canDropHere) return;
+              await moveCategoryByDrop(siblings, draggedCategoryId, c.id);
+              setDraggedCategoryId(null);
+              setDragOverCategoryId(null);
+            }}
           >
+            <button
+              type="button"
+              draggable={!reorderBusy}
+              onDragStart={() => setDraggedCategoryId(c.id)}
+              onDragEnd={() => {
+                setDraggedCategoryId(null);
+                setDragOverCategoryId(null);
+              }}
+              className="p-2 rounded-xl text-muted-foreground hover:bg-muted cursor-grab active:cursor-grabbing disabled:opacity-40"
+              disabled={reorderBusy}
+              title="Перетащите для сортировки внутри текущего уровня"
+              aria-label="Перетащите для сортировки внутри текущего уровня"
+            >
+              <Menu size={15} />
+            </button>
             <span className="text-2xl w-10 h-10 rounded-xl flex items-center justify-center bg-muted">{c.emoji}</span>
             <div className="flex-1 min-w-0">
               <div className="font-display font-semibold text-sm">{c.name}</div>
@@ -2021,7 +2570,7 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
               <div className="text-[11px] text-muted-foreground mt-1">{c.pathLabel}</div>
               <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
                 <span className="px-2 py-0.5 rounded-full bg-muted">
-                  Родитель: {parent ? `${parent.emoji ? `${parent.emoji} ` : ''}${parent.name}` : 'нет'}
+                  Родитель: {parent ? `${parent.emoji ? `${parent.emoji} ` : ''}${parent.name}` : (parentId ? 'нет (сирота)' : 'нет')}
                 </span>
                 <span className="px-2 py-0.5 rounded-full bg-muted">
                   Подкатегорий: {children.length}
@@ -2094,59 +2643,40 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
             </div>
             <div className="flex gap-1.5">
               <button
-                onClick={async () => {
-                  if (reorderBusy || siblingIndex <= 0) return;
-                  try {
-                    setReorderBusy(true);
-                    const next = [...siblings];
-                    [next[siblingIndex - 1], next[siblingIndex]] = [next[siblingIndex], next[siblingIndex - 1]];
-                    await Promise.all(next.map((item, idx) => store.updateCategory(item.id, { categoryOrder: idx + 1 })));
-                    toast.success('Порядок категорий обновлен');
-                  } catch (err) {
-                    toast.error(getFriendlyActionError(err, 'Не удалось изменить порядок категорий'));
-                  } finally {
-                    setReorderBusy(false);
-                  }
-                }}
+                onClick={() => updateSiblingOrder(siblings, siblingIndex, siblingIndex - 1)}
                 disabled={reorderBusy || siblingIndex <= 0}
+                title="Поднять категорию выше"
+                aria-label="Поднять категорию выше"
                 className="p-2 rounded-xl hover:bg-muted text-muted-foreground disabled:opacity-40"
               >
                 <ArrowUp size={15} />
               </button>
               <button
-                onClick={async () => {
-                  if (reorderBusy || siblingIndex < 0 || siblingIndex >= siblings.length - 1) return;
-                  try {
-                    setReorderBusy(true);
-                    const next = [...siblings];
-                    [next[siblingIndex + 1], next[siblingIndex]] = [next[siblingIndex], next[siblingIndex + 1]];
-                    await Promise.all(next.map((item, idx) => store.updateCategory(item.id, { categoryOrder: idx + 1 })));
-                    toast.success('Порядок категорий обновлен');
-                  } catch (err) {
-                    toast.error(getFriendlyActionError(err, 'Не удалось изменить порядок категорий'));
-                  } finally {
-                    setReorderBusy(false);
-                  }
-                }}
+                onClick={() => updateSiblingOrder(siblings, siblingIndex, siblingIndex + 1)}
                 disabled={reorderBusy || siblingIndex < 0 || siblingIndex >= siblings.length - 1}
+                title="Опустить категорию ниже"
+                aria-label="Опустить категорию ниже"
                 className="p-2 rounded-xl hover:bg-muted text-muted-foreground disabled:opacity-40"
               >
                 <ArrowDown size={15} />
               </button>
-              <button onClick={() => { setEditing(c); setCreating(false); }}
+              <button onClick={() => { setEditing(c); setCreating(false); setCreateDraft(null); }}
+                title="Редактировать категорию"
+                aria-label="Редактировать категорию"
                 className="p-2 rounded-xl hover:bg-muted text-muted-foreground hover:text-primary transition-colors">
                 <Pencil size={15} />
               </button>
-              <button onClick={async () => {
-                try {
-                  await store.deleteCategory(c.id);
-                  toast.success('Удалено');
-                } catch (err) {
-                  const code = err instanceof Error ? err.message : '';
-                  if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-                  else toast.error('Не удалось удалить категорию');
-                }
-              }}
+              <button
+                onClick={() => openCreateChild(c)}
+                title="Добавить подкатегорию"
+                aria-label="Добавить подкатегорию"
+                className="p-2 rounded-xl hover:bg-muted text-muted-foreground hover:text-primary transition-colors"
+              >
+                <Plus size={15} />
+              </button>
+              <button onClick={() => deleteCategoryWithConfirm(c)}
+                title="Удалить категорию"
+                aria-label="Удалить категорию"
                 className="p-2 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
                 <Trash2 size={15} />
               </button>
@@ -2259,6 +2789,8 @@ function HomeCategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
                     }
                   }}
                   disabled={reorderBusy || i === 0}
+                  title="Поднять категорию выше"
+                  aria-label="Поднять категорию выше"
                   className="p-2 rounded-xl hover:bg-muted text-muted-foreground disabled:opacity-40"
                 >
                   <ArrowUp size={15} />
@@ -2280,6 +2812,8 @@ function HomeCategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
                     }
                   }}
                   disabled={reorderBusy || i === homeOrderList.length - 1}
+                  title="Опустить категорию ниже"
+                  aria-label="Опустить категорию ниже"
                   className="p-2 rounded-xl hover:bg-muted text-muted-foreground disabled:opacity-40"
                 >
                   <ArrowDown size={15} />
@@ -2297,8 +2831,15 @@ function HomeCategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
 }
 
 /* ─── Category Form ─── */
-function CategoryForm({ category, categories, colorOptions, onSave, onCancel }: {
+function CategoryForm({ category, draft, categories, colorOptions, onSave, onCancel }: {
   category: Category | null;
+  draft?: {
+    parentId?: string;
+    group?: 'set' | 'single';
+    showOnHome?: boolean;
+    name?: string;
+    slug?: string;
+  } | null;
   categories: Category[];
   colorOptions: { value: string; label: string }[];
   onSave: (data: Partial<Category> & { id?: string }) => void;
@@ -2307,21 +2848,21 @@ function CategoryForm({ category, categories, colorOptions, onSave, onCancel }: 
   const defaultShowOnHome = (id: string) => !id.includes('/') && id !== 'packaging';
   const baseId = category?.id || '';
   const parts = baseId ? baseId.split('/') : [];
-  const initialParentId = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
-  const initialSlug = parts.length ? parts[parts.length - 1] : '';
+  const initialParentId = category ? (parts.length > 1 ? parts.slice(0, -1).join('/') : '') : (draft?.parentId || '');
+  const initialSlug = category ? (parts.length ? parts[parts.length - 1] : '') : (draft?.slug || '');
   const fallbackSetIds = useMemo(() => new Set(['gift', 'chocolate', 'truffles', 'asian', 'cookies']), []);
-  const initialGroup = category?.group
+  const initialGroup = category?.group ?? draft?.group
     ?? (initialParentId
       ? (categories.find(c => c.id === initialParentId)?.group || (fallbackSetIds.has(initialParentId) ? 'set' : 'single'))
       : (fallbackSetIds.has(baseId) ? 'set' : 'single'));
   const [form, setForm] = useState({
     parentId: initialParentId,
     slug: initialSlug,
-    name: category?.name || '',
+    name: category?.name || draft?.name || '',
     emoji: category?.emoji || '🍬',
     color: category?.color || 'candy-pink',
     group: initialGroup,
-    showOnHome: category?.showOnHome ?? (baseId ? defaultShowOnHome(baseId) : !initialParentId),
+    showOnHome: category?.showOnHome ?? draft?.showOnHome ?? (baseId ? defaultShowOnHome(baseId) : !initialParentId),
     homeOrder: category?.homeOrder ?? '',
   });
   const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }));
@@ -2502,7 +3043,7 @@ function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
     approved: true,
     createdAt: '',
   });
-  const setFormField = (k: keyof typeof form, v: any) => setForm(f => ({ ...f, [k]: v }));
+  const setFormField = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm(f => ({ ...f, [k]: v }));
 
   useEffect(() => {
     if (!form.productId && productsSorted.length) {
@@ -3096,10 +3637,14 @@ function BadgesTab({ store }: { store: ReturnType<typeof useStore> }) {
               </label>
               <div className="flex gap-1.5">
                 <button onClick={() => { setEditing(b); setCreating(false); }}
+                  title="Редактировать бейдж"
+                  aria-label="Редактировать бейдж"
                   className="p-2 rounded-xl hover:bg-muted text-muted-foreground hover:text-primary transition-colors">
                   <Pencil size={15} />
                 </button>
                 <button onClick={() => { store.deleteBadge(b.id); toast.success('Удалено'); }}
+                  title="Удалить бейдж"
+                  aria-label="Удалить бейдж"
                   className="p-2 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
                   <Trash2 size={15} />
                 </button>
@@ -3237,6 +3782,8 @@ function PromosTab({ store }: { store: ReturnType<typeof useStore> }) {
             </div>
             <div className="flex gap-1.5">
               <button onClick={() => { setEditing(pr); setCreating(false); }}
+                title="Редактировать промокод"
+                aria-label="Редактировать промокод"
                 className="p-2 rounded-xl hover:bg-muted text-muted-foreground hover:text-primary transition-colors">
                 <Pencil size={15} />
               </button>
@@ -3250,6 +3797,8 @@ function PromosTab({ store }: { store: ReturnType<typeof useStore> }) {
                   else toast.error('Не удалось удалить промокод');
                 }
               }}
+                title="Удалить промокод"
+                aria-label="Удалить промокод"
                 className="p-2 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
                 <Trash2 size={15} />
               </button>
@@ -3275,14 +3824,14 @@ function PromoForm({ promo, categories, onSave, onCancel }: {
     products: promo?.products ? promo.products.join(',') : '',
     active: promo?.active !== false,
   });
-  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
+  const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm(f => ({ ...f, [k]: v }));
   const isNew = !promo;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.code.trim()) { toast.error('Введите код промокода (например: SWEET15)'); return; }
     if (form.percent <= 0 || form.percent > 90) { toast.error('Скидка должна быть от 1% до 90%'); return; }
-    const payload: any = {
+    const payload: Parameters<typeof onSave>[0] = {
       code: form.code.trim().toUpperCase(),
       percent: Number(form.percent),
       scope: form.scope as PromoScope,
@@ -3314,7 +3863,7 @@ function PromoForm({ promo, categories, onSave, onCancel }: {
       </div>
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Область</label>
-        <select value={form.scope} onChange={e => set('scope', e.target.value)} className="admin-input">
+        <select value={form.scope} onChange={e => set('scope', e.target.value as PromoScope)} className="admin-input">
           <option value="all">Все товары</option>
           <option value="category">Категории</option>
           <option value="product">Отдельные товары</option>
@@ -3408,6 +3957,8 @@ function ArticlesTab({ store }: { store: ReturnType<typeof useStore> }) {
             </div>
             <div className="flex gap-1.5">
               <button onClick={() => { setEditing(a); setCreating(false); }}
+                title="Редактировать статью"
+                aria-label="Редактировать статью"
                 className="p-2 rounded-xl hover:bg-muted text-muted-foreground hover:text-primary transition-colors">
                 <Pencil size={15} />
               </button>
@@ -3421,6 +3972,8 @@ function ArticlesTab({ store }: { store: ReturnType<typeof useStore> }) {
                   else toast.error('Не удалось удалить статью');
                 }
               }}
+                title="Удалить статью"
+                aria-label="Удалить статью"
                 className="p-2 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
                 <Trash2 size={15} />
               </button>
@@ -3463,25 +4016,13 @@ function ArticleForm({ article, onSave, onCancel, products, categories }: {
   const maxImages = 7;
 
   const addImages = async (files: FileList | null) => {
-    if (!files || !files.length) return;
-    if (form.images.length >= maxImages) { toast.error('Макс. 7 фото'); return; }
-    const list = Array.from(files);
-    const next: string[] = [];
-    for (const file of list) {
-      if (!file.type.startsWith('image/')) { toast.error('Только изображения'); continue; }
-      if (file.size > 5 * 1024 * 1024) { toast.error('Макс. размер 5 МБ'); continue; }
-      try {
-        const dataUrl = await readFileAsDataUrl(file);
-        next.push(dataUrl);
-      } catch {
-        toast.error('Не удалось обработать изображение');
-      }
-    }
-    if (!next.length) return;
-    const space = maxImages - form.images.length;
-    const slice = next.slice(0, space);
-    if (slice.length < next.length) toast.error('Макс. 7 фото');
-    setImages([...form.images, ...slice]);
+    const result = await appendValidatedImages({
+      files,
+      currentImages: form.images,
+      maxImages,
+      maxImagesError: 'Макс. 7 фото',
+    });
+    if (result) setImages(result);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -3837,29 +4378,17 @@ function AboutTab({ store }: { store: ReturnType<typeof useStore> }) {
     });
   }, [store.about]);
 
-  const set = (k: keyof typeof form, v: any) => setForm(f => ({ ...f, [k]: v }));
+  const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm(f => ({ ...f, [k]: v }));
   const maxImages = 8;
 
   const addImages = async (files: FileList | null) => {
-    if (!files || !files.length) return;
-    if (form.images.length >= maxImages) { toast.error('Макс. 8 фото'); return; }
-    const list = Array.from(files);
-    const next: string[] = [];
-    for (const file of list) {
-      if (!file.type.startsWith('image/')) { toast.error('Только изображения'); continue; }
-      if (file.size > 5 * 1024 * 1024) { toast.error('Макс. размер 5 МБ'); continue; }
-      try {
-        const dataUrl = await readFileAsDataUrl(file);
-        next.push(dataUrl);
-      } catch {
-        toast.error('Не удалось обработать изображение');
-      }
-    }
-    if (!next.length) return;
-    const space = maxImages - form.images.length;
-    const slice = next.slice(0, space);
-    if (slice.length < next.length) toast.error('Макс. 8 фото');
-    set('images', [...form.images, ...slice]);
+    const result = await appendValidatedImages({
+      files,
+      currentImages: form.images,
+      maxImages,
+      maxImagesError: 'Макс. 8 фото',
+    });
+    if (result) set('images', result);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

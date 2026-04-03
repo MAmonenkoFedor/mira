@@ -5,8 +5,8 @@ import { clearToken, getToken } from "@/lib/auth";
 import { api } from "@/lib/api";
 
 export default function AdminGate() {
-  const [authed, setAuthed] = useState<boolean>(false);
-  const [checked, setChecked] = useState(false);
+  const [authed, setAuthed] = useState<boolean>(() => Boolean(getToken()));
+  const [checked, setChecked] = useState(true);
 
   useEffect(() => {
     const setMeta = (attr: 'name' | 'property', key: string, content: string) => {
@@ -47,26 +47,22 @@ export default function AdminGate() {
       if (!token) {
         if (!active) return;
         setAuthed(false);
-        setChecked(true);
         return;
       }
       try {
         await api.getOrders();
         if (!active) return;
         setAuthed(true);
-        setChecked(true);
       } catch (err) {
         const code = err instanceof Error ? err.message : "";
         if (code === "401" || code === "403") {
           clearToken();
           if (!active) return;
           setAuthed(false);
-          setChecked(true);
           return;
         }
         if (!active) return;
         setAuthed(true);
-        setChecked(true);
       }
     })();
     return () => {
