@@ -18,6 +18,12 @@ export default defineConfig(({ mode }) => ({
           : String(process.env.VITE_API_URL),
         changeOrigin: true,
       },
+      "/uploads": {
+        target: (/localhost:(8080|8081|5173)/.test(String(process.env.VITE_API_URL)) || !process.env.VITE_API_URL)
+          ? "http://localhost:3001"
+          : String(process.env.VITE_API_URL),
+        changeOrigin: true,
+      },
     },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),

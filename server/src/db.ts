@@ -107,6 +107,18 @@ export async function migrate(pool: Pool) {
   `);
   await pool.query(`alter table admins add column if not exists reset_token text`);
   await pool.query(`alter table admins add column if not exists reset_expires timestamptz`);
+  await pool.query(`alter table admins add column if not exists force_logout_after timestamptz`);
+  await pool.query(`
+    create table if not exists admin_login_events(
+      id serial primary key,
+      admin_id integer references admins(id) on delete set null,
+      email text not null,
+      ip text,
+      user_agent text,
+      success boolean not null default false,
+      created_at timestamptz not null default now()
+    );
+  `);
   await pool.query(`
     create table if not exists orders(
       id serial primary key,

@@ -9,6 +9,28 @@ import { useCart } from '@/components/candy-store/useCart';
 import { useReveal } from '@/components/candy-store/useReveal';
 import type { Product, Category } from '@/components/candy-store/data';
 
+type Node = { category: Category; children: Node[] };
+
+const getProductCategoryIds = (p: Product) => {
+  const anyP = p as any;
+  return Array.isArray(anyP?.categories) && anyP.categories.length
+    ? anyP.categories.filter(Boolean).map((x: unknown) => String(x))
+    : (anyP?.category ? [String(anyP.category)] : []);
+};
+
+const flattenCategoryTree = (nodes: Node[]) => {
+  const out: { id: string; label: string }[] = [];
+  const walk = (node: Node, depth: number) => {
+    out.push({
+      id: node.category.id,
+      label: `${'— '.repeat(depth)}${node.category.emoji ? `${node.category.emoji} ` : ''}${node.category.name}`,
+    });
+    node.children.forEach(child => walk(child, depth + 1));
+  };
+  nodes.forEach(node => walk(node, 0));
+  return out;
+};
+
 const Catalog = () => {
   const cart = useCart();
   const revealRef = useReveal();
@@ -97,10 +119,7 @@ const Catalog = () => {
     const set = new Set<string>();
     for (const p of products) {
       if (p.active === false) continue;
-      const anyP = p as any;
-      const ids: string[] = Array.isArray(anyP?.categories) && anyP.categories.length
-        ? anyP.categories.filter(Boolean).map((x: unknown) => String(x))
-        : (anyP?.category ? [String(anyP.category)] : []);
+      const ids = getProductCategoryIds(p);
       for (const id of ids) {
         const parts = id.split('/');
         for (let i = 0; i < parts.length; i += 1) {
@@ -110,8 +129,6 @@ const Catalog = () => {
     }
     return set;
   }, [products]);
-
-  type Node = { category: Category; children: Node[] };
 
   const tree = useMemo(() => {
     const list = categories.filter(c => Boolean(c?.id) && productCategoryIds.has(c.id));
@@ -188,6 +205,28 @@ const Catalog = () => {
   const isSetNode = useCallback((n: Node) => n.category.group === 'set' || (!n.category.group && setIds.has(n.category.id)), [setIds]);
   const setNodes = useMemo(() => tree.filter(n => isSetNode(n)), [tree, isSetNode]);
   const singleNodes = useMemo(() => tree.filter(n => !isSetNode(n)), [tree, isSetNode]);
+  const setCategoryOptions = useMemo(() => flattenCategoryTree(setNodes), [setNodes]);
+  const singleCategoryOptions = useMemo(() => flattenCategoryTree(singleNodes), [singleNodes]);
+  const renderTreeNode = useCallback((node: Node, depth: number, ancestorIds: string[] = []): JSX.Element => (
+    <div key={node.category.id}>
+      <button
+        onClick={() => handleTreeNodeClick(node.category.id, node.children.length > 0, ancestorIds)}
+        className={`w-full text-left rounded-2xl text-sm transition ${
+          (depth === 0 ? (activeTopId === node.category.id || activeCategory === node.category.id) : activeCategory === node.category.id)
+            ? 'bg-primary/10 text-primary'
+            : 'hover:bg-muted/50'
+        }`}
+        style={{ paddingLeft: `${12 + depth * 12}px`, paddingRight: '12px', paddingTop: '8px', paddingBottom: '8px' }}
+      >
+        {node.category.emoji ? `${node.category.emoji} ` : ''}{node.category.name}
+      </button>
+      {node.children.length > 0 && expandedPath.includes(node.category.id) && (
+        <div className="mt-1 space-y-1">
+          {node.children.map(child => renderTreeNode(child, depth + 1, [...ancestorIds, node.category.id]))}
+        </div>
+      )}
+    </div>
+  ), [activeCategory, activeTopId, expandedPath, handleTreeNodeClick]);
 
   return (
     <div ref={revealRef} className="min-h-screen">
@@ -215,54 +254,12 @@ const Catalog = () => {
                   </button>
                   <div className="mt-3 space-y-1">
                     {setNodes.map(node => {
-                      const renderNode = (n: Node, depth: number, ancestorIds: string[] = []) => (
-                        <div key={n.category.id}>
-                          <button
-                            onClick={() => handleTreeNodeClick(n.category.id, n.children.length > 0, ancestorIds)}
-                            className={`w-full text-left rounded-2xl text-sm transition ${
-                              (depth === 0 ? (activeTopId === n.category.id || activeCategory === n.category.id) : activeCategory === n.category.id)
-                                ? 'bg-primary/10 text-primary'
-                                : 'hover:bg-muted/50'
-                            }`}
-                            style={{ paddingLeft: `${12 + depth * 12}px`, paddingRight: '12px', paddingTop: '8px', paddingBottom: '8px' }}
-                          >
-                            {n.category.emoji ? `${n.category.emoji} ` : ''}{n.category.name}
-                          </button>
-                          {n.children.length > 0 && expandedPath.includes(n.category.id) && (
-                            <div className="mt-1 space-y-1">
-                              {n.children.map(child => renderNode(child, depth + 1, [...ancestorIds, n.category.id]))}
-                            </div>
-                          )}
-                        </div>
-                      );
-
-                      return renderNode(node, 0);
+                      return renderTreeNode(node, 0);
                     })}
                   </div>
                   <div className="mt-4 space-y-1">
                     {singleNodes.map(node => {
-                      const renderNode = (n: Node, depth: number, ancestorIds: string[] = []) => (
-                        <div key={n.category.id}>
-                          <button
-                            onClick={() => handleTreeNodeClick(n.category.id, n.children.length > 0, ancestorIds)}
-                            className={`w-full text-left rounded-2xl text-sm transition ${
-                              (depth === 0 ? (activeTopId === n.category.id || activeCategory === n.category.id) : activeCategory === n.category.id)
-                                ? 'bg-primary/10 text-primary'
-                                : 'hover:bg-muted/50'
-                            }`}
-                            style={{ paddingLeft: `${12 + depth * 12}px`, paddingRight: '12px', paddingTop: '8px', paddingBottom: '8px' }}
-                          >
-                            {n.category.emoji ? `${n.category.emoji} ` : ''}{n.category.name}
-                          </button>
-                          {n.children.length > 0 && expandedPath.includes(n.category.id) && (
-                            <div className="mt-1 space-y-1">
-                              {n.children.map(child => renderNode(child, depth + 1, [...ancestorIds, n.category.id]))}
-                            </div>
-                          )}
-                        </div>
-                      );
-
-                      return renderNode(node, 0);
+                      return renderTreeNode(node, 0);
                     })}
                   </div>
                   <div className="mt-4 pt-3 border-t border-border/60">
@@ -285,34 +282,12 @@ const Catalog = () => {
                   >
                     <option value="">Все товары</option>
                     <optgroup label="Наборы">
-                      {setNodes.flatMap(node => {
-                        const out: { id: string; label: string }[] = [];
-                        const walk = (n: Node, depth: number) => {
-                          out.push({
-                            id: n.category.id,
-                            label: `${'— '.repeat(depth)}${n.category.emoji ? `${n.category.emoji} ` : ''}${n.category.name}`,
-                          });
-                          n.children.forEach(child => walk(child, depth + 1));
-                        };
-                        walk(node, 0);
-                        return out;
-                      }).map(c => (
+                      {setCategoryOptions.map(c => (
                         <option key={c.id} value={c.id}>{c.label}</option>
                       ))}
                     </optgroup>
                     <optgroup label="Штучные товары">
-                      {singleNodes.flatMap(node => {
-                        const out: { id: string; label: string }[] = [];
-                        const walk = (n: Node, depth: number) => {
-                          out.push({
-                            id: n.category.id,
-                            label: `${'— '.repeat(depth)}${n.category.emoji ? `${n.category.emoji} ` : ''}${n.category.name}`,
-                          });
-                          n.children.forEach(child => walk(child, depth + 1));
-                        };
-                        walk(node, 0);
-                        return out;
-                      }).map(c => (
+                      {singleCategoryOptions.map(c => (
                         <option key={c.id} value={c.id}>{c.label}</option>
                       ))}
                     </optgroup>

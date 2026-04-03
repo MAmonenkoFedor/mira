@@ -50,6 +50,9 @@ const promoDir = path.join(uploadsDir, "promos");
 fs.mkdirSync(heroDir, { recursive: true });
 fs.mkdirSync(promoDir, { recursive: true });
 app.use("/uploads", express.static(uploadsDir));
+app.use("/uploads", (_req, res) => {
+  res.status(204).end();
+});
 
 app.get("/health", async (_req, res) => {
   res.json({ ok: true });
@@ -74,6 +77,84 @@ async function signCustomerToken(customerId: number, phone: string | null, email
 async function verifyToken(token: string) {
   const { payload } = await jwtVerify(token, jwtSecret);
   return payload;
+}
+
+function getBearerToken(req: express.Request) {
+  const authorization = req.headers.authorization;
+  return authorization?.startsWith("Bearer ") ? authorization.slice(7) : null;
+}
+
+type AdminSession = {
+  id: number;
+  email: string;
+  force_logout_after: string | Date | null;
+};
+
+async function resolveAdminSession(payload: any): Promise<AdminSession | null> {
+  if (payload?.role !== "admin") return null;
+  const adminId = Number(payload?.sub);
+  if (!Number.isFinite(adminId) || adminId <= 0) return null;
+  const { rows } = await pool.query("select id,email,force_logout_after from admins where id=$1", [adminId]);
+  const admin = rows[0] as AdminSession | undefined;
+  if (!admin) return null;
+  const tokenIatSec = typeof payload?.iat === "number" ? payload.iat : null;
+  const forceLogoutAtSec = admin.force_logout_after ? Math.floor(new Date(admin.force_logout_after).getTime() / 1000) : null;
+  if (tokenIatSec && forceLogoutAtSec && forceLogoutAtSec > tokenIatSec) return null;
+  return admin;
+}
+
+async function resolveAdminSessionFromRequest(req: express.Request): Promise<AdminSession | null> {
+  const token = getBearerToken(req);
+  if (!token) return null;
+  const payload = await verifyToken(token);
+  return resolveAdminSession(payload);
+}
+
+async function resolveCustomerIdFromRequest(req: express.Request): Promise<number | null> {
+  const token = getBearerToken(req);
+  if (!token) return null;
+  const payload = await verifyToken(token);
+  if (payload.role !== "customer") return null;
+  const id = Number(payload.sub);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  return id;
+}
+
+async function resolveCustomerContactFromRequest(req: express.Request): Promise<{ phone: string | null; email: string | null } | null> {
+  const token = getBearerToken(req);
+  if (!token) return null;
+  const payload = await verifyToken(token);
+  if (payload.role !== "customer") return null;
+  return {
+    phone: payload.phone ? String(payload.phone) : null,
+    email: payload.email ? String(payload.email) : null,
+  };
+}
+
+function mapOrderRow(r: any) {
+  return {
+    id: r.id,
+    total: r.total,
+    discount: r.discount,
+    promo: r.promo ?? undefined,
+    contact: { name: r.contact_name, phone: r.contact_phone, email: r.contact_email ?? undefined },
+    delivery: { address: r.delivery_address, method: r.delivery_method, payment: r.payment_method },
+    createdAt: r.created_at,
+    status: r.status,
+    deliveryStatus: r.delivery_status ?? undefined,
+    deliveryProvider: r.delivery_provider ?? undefined,
+    trackingNumber: r.tracking_number ?? undefined,
+    items: r.items ?? [],
+  };
+}
+
+async function recordAdminLoginEvent(req: express.Request, email: string, adminId: number | null, success: boolean) {
+  const ip = getClientIp(req);
+  const userAgent = req.headers["user-agent"] ? String(req.headers["user-agent"]) : null;
+  await pool.query(
+    "insert into admin_login_events(admin_id,email,ip,user_agent,success) values($1,$2,$3,$4,$5)",
+    [adminId, email, ip, userAgent, success]
+  );
 }
 
 function getClientIp(req: express.Request) {
@@ -494,10 +575,17 @@ app.post("/api/auth/login", rateLimitMiddleware(10, 15 * 60 * 1000), async (req,
     const { email, password } = AuthSchema.parse(req.body);
     const { rows } = await pool.query(`select id,email,password_hash from admins where email=$1`, [email]);
     const admin = rows[0];
-    if (!admin) return res.status(401).json({ error: "invalid_credentials" });
+    if (!admin) {
+      await recordAdminLoginEvent(req, email, null, false);
+      return res.status(401).json({ error: "invalid_credentials" });
+    }
     const ok = await bcrypt.compare(password, admin.password_hash);
-    if (!ok) return res.status(401).json({ error: "invalid_credentials" });
+    if (!ok) {
+      await recordAdminLoginEvent(req, admin.email, Number(admin.id), false);
+      return res.status(401).json({ error: "invalid_credentials" });
+    }
     const token = await signToken(admin.id, admin.email);
+    await recordAdminLoginEvent(req, admin.email, Number(admin.id), true);
     res.json({ token });
   } catch {
     res.status(400).json({ error: "bad_request" });
@@ -563,10 +651,8 @@ app.post("/api/customer/login", rateLimitMiddleware(10, 15 * 60 * 1000), async (
 function requireAuth(handler: express.RequestHandler): express.RequestHandler {
   return async (req, res, next) => {
     try {
-      const hdr = req.headers.authorization;
-      const token = hdr?.startsWith("Bearer ") ? hdr.slice(7) : null;
-      if (!token) return res.status(401).json({ error: "unauthorized" });
-      await verifyToken(token);
+      const admin = await resolveAdminSessionFromRequest(req);
+      if (!admin) return res.status(401).json({ error: "unauthorized" });
       return handler(req, res, next);
     } catch {
       return res.status(401).json({ error: "unauthorized" });
@@ -577,11 +663,8 @@ function requireAuth(handler: express.RequestHandler): express.RequestHandler {
 function requireCustomerAuth(handler: express.RequestHandler): express.RequestHandler {
   return async (req, res, next) => {
     try {
-      const hdr = req.headers.authorization;
-      const token = hdr?.startsWith("Bearer ") ? hdr.slice(7) : null;
-      if (!token) return res.status(401).json({ error: "unauthorized" });
-      const payload = await verifyToken(token);
-      if (payload.role !== "customer") return res.status(401).json({ error: "unauthorized" });
+      const customerId = await resolveCustomerIdFromRequest(req);
+      if (!customerId) return res.status(401).json({ error: "unauthorized" });
       return handler(req, res, next);
     } catch {
       return res.status(401).json({ error: "unauthorized" });
@@ -1067,8 +1150,17 @@ app.delete("/api/categories/:id", requireAuth(async (req, res) => {
   const categoryId = req.params.id;
   await pool.query("begin");
   try {
-    await pool.query("delete from categories where id=$1", [categoryId]);
-    await pool.query("update products set categories=array_remove(coalesce(categories,'{}'::text[]), $1) where categories @> array[$1]::text[]", [categoryId]);
+    const { rows: deletedRows } = await pool.query(
+      "delete from categories where id=$1 or id like $2 returning id",
+      [categoryId, `${categoryId}/%`]
+    );
+    const deletedIds = (deletedRows as Array<{ id: string }>).map((row) => row.id);
+    if (deletedIds.length) {
+      await pool.query(
+        "update products set category=case when category = any($1::text[]) then null else category end, categories=(select coalesce(array_agg(cat), '{}'::text[]) from unnest(coalesce(products.categories,'{}'::text[])) as cat where not (cat = any($1::text[]))) where category = any($1::text[]) or categories && $1::text[]",
+        [deletedIds]
+      );
+    }
     await pool.query("commit");
   } catch (err) {
     await pool.query("rollback");
@@ -1315,11 +1407,9 @@ app.get("/api/products/:id/reviews", async (req, res) => {
 app.post("/api/products/:id/reviews", requireCustomerAuth(async (req, res) => {
   const productId = Number(req.params.id);
   if (!Number.isFinite(productId)) return res.status(400).json({ error: "bad_product" });
-  const hdr = req.headers.authorization!;
-  const token = hdr.slice(7);
-  const payload = await verifyToken(token);
-  const phone = payload.phone ? String(payload.phone) : null;
-  const email = payload.email ? String(payload.email) : null;
+  const contact = await resolveCustomerContactFromRequest(req);
+  const phone = contact?.phone ?? null;
+  const email = contact?.email ?? null;
   if (!phone && !email) return res.status(403).json({ error: "not_purchased" });
   const { rows: hasPurchase } = await pool.query(
     `select 1
@@ -1982,28 +2072,13 @@ app.get("/api/orders", requireAuth(async (_req, res) => {
     group by o.id
     order by o.id desc`
   );
-  res.json(rows.map((r: any) => ({
-    id: r.id,
-    total: r.total,
-    discount: r.discount,
-    promo: r.promo ?? undefined,
-    contact: { name: r.contact_name, phone: r.contact_phone, email: r.contact_email ?? undefined },
-    delivery: { address: r.delivery_address, method: r.delivery_method, payment: r.payment_method },
-    createdAt: r.created_at,
-    status: r.status,
-    deliveryStatus: r.delivery_status ?? undefined,
-    deliveryProvider: r.delivery_provider ?? undefined,
-    trackingNumber: r.tracking_number ?? undefined,
-    items: r.items ?? [],
-  })));
+  res.json(rows.map(mapOrderRow));
 }));
 
 app.get("/api/customer/orders", requireCustomerAuth(async (req, res) => {
-  const hdr = req.headers.authorization!;
-  const token = hdr.slice(7);
-  const payload = await verifyToken(token);
-  const phone = payload.phone ? String(payload.phone) : null;
-  const email = payload.email ? String(payload.email) : null;
+  const contact = await resolveCustomerContactFromRequest(req);
+  const phone = contact?.phone ?? null;
+  const email = contact?.email ?? null;
   if (!phone && !email) return res.json([]);
   const { rows } = await pool.query(
     `select
@@ -2044,20 +2119,7 @@ app.get("/api/customer/orders", requireCustomerAuth(async (req, res) => {
     order by o.id desc`,
     [phone, email]
   );
-  res.json(rows.map((r: any) => ({
-    id: r.id,
-    total: r.total,
-    discount: r.discount,
-    promo: r.promo ?? undefined,
-    contact: { name: r.contact_name, phone: r.contact_phone, email: r.contact_email ?? undefined },
-    delivery: { address: r.delivery_address, method: r.delivery_method, payment: r.payment_method },
-    createdAt: r.created_at,
-    status: r.status,
-    deliveryStatus: r.delivery_status ?? undefined,
-    deliveryProvider: r.delivery_provider ?? undefined,
-    trackingNumber: r.tracking_number ?? undefined,
-    items: r.items ?? [],
-  })));
+  res.json(rows.map(mapOrderRow));
 }));
 
 app.put("/api/orders/:id", requireAuth(async (req, res) => {
@@ -2092,11 +2154,9 @@ const ChangePasswordSchema = z.object({ currentPassword: z.string().min(6), newP
 app.post("/api/auth/change-password", rateLimitMiddleware(10, 15 * 60 * 1000), requireAuth(async (req, res) => {
   try {
     const data = ChangePasswordSchema.parse(req.body);
-    const hdr = req.headers.authorization!;
-    const token = hdr.slice(7);
-    const payload = await verifyToken(token);
-    const email = String(payload.email);
-    const { rows } = await pool.query(`select id,password_hash from admins where email=$1`, [email]);
+    const session = await resolveAdminSessionFromRequest(req);
+    if (!session) return res.status(401).json({ error: "unauthorized" });
+    const { rows } = await pool.query(`select id,password_hash from admins where id=$1`, [session.id]);
     const admin = rows[0];
     if (!admin) return res.status(401).json({ error: "unauthorized" });
     const ok = await bcrypt.compare(data.currentPassword, admin.password_hash);
@@ -2109,13 +2169,72 @@ app.post("/api/auth/change-password", rateLimitMiddleware(10, 15 * 60 * 1000), r
   }
 }));
 
+const ChangeEmailSchema = z.object({ currentPassword: z.string().min(6), newEmail: z.string().email() });
+app.post("/api/auth/change-email", rateLimitMiddleware(10, 15 * 60 * 1000), requireAuth(async (req, res) => {
+  try {
+    const data = ChangeEmailSchema.parse(req.body);
+    const session = await resolveAdminSessionFromRequest(req);
+    if (!session) return res.status(401).json({ error: "unauthorized" });
+    const newEmail = data.newEmail.trim().toLowerCase();
+    const { rows } = await pool.query(`select id,email,password_hash from admins where id=$1`, [session.id]);
+    const admin = rows[0];
+    if (!admin) return res.status(401).json({ error: "unauthorized" });
+    const ok = await bcrypt.compare(data.currentPassword, admin.password_hash);
+    if (!ok) return res.status(400).json({ error: "invalid_password" });
+    if (String(admin.email).toLowerCase() === newEmail) return res.status(400).json({ error: "same_email" });
+    const exists = await pool.query(`select id from admins where email=$1 and id<>$2`, [newEmail, session.id]);
+    if (exists.rows[0]) return res.status(409).json({ error: "email_exists" });
+    await pool.query(`update admins set email=$2 where id=$1`, [session.id, newEmail]);
+    const nextToken = await signToken(session.id, newEmail);
+    res.json({ ok: true, email: newEmail, token: nextToken });
+  } catch {
+    res.status(400).json({ error: "bad_request" });
+  }
+}));
+
+const LogoutAllSessionsSchema = z.object({ currentPassword: z.string().min(6) });
+app.post("/api/auth/logout-all-sessions", rateLimitMiddleware(10, 15 * 60 * 1000), requireAuth(async (req, res) => {
+  try {
+    const data = LogoutAllSessionsSchema.parse(req.body);
+    const session = await resolveAdminSessionFromRequest(req);
+    if (!session) return res.status(401).json({ error: "unauthorized" });
+    const { rows } = await pool.query(`select id,password_hash from admins where id=$1`, [session.id]);
+    const admin = rows[0];
+    if (!admin) return res.status(401).json({ error: "unauthorized" });
+    const ok = await bcrypt.compare(data.currentPassword, admin.password_hash);
+    if (!ok) return res.status(400).json({ error: "invalid_password" });
+    await pool.query(`update admins set force_logout_after=now() where id=$1`, [session.id]);
+    res.json({ ok: true });
+  } catch {
+    res.status(400).json({ error: "bad_request" });
+  }
+}));
+
+app.get("/api/auth/admin-security", requireAuth(async (req, res) => {
+  const session = await resolveAdminSessionFromRequest(req);
+  if (!session) return res.status(401).json({ error: "unauthorized" });
+  const { rows } = await pool.query(
+    "select id,email,ip,user_agent,success,created_at from admin_login_events where admin_id=$1 or email=$2 order by created_at desc limit 20",
+    [session.id, session.email]
+  );
+  res.json({
+    email: session.email,
+    recentLogins: rows.map((r: any) => ({
+      id: r.id,
+      email: r.email,
+      ip: r.ip ?? null,
+      userAgent: r.user_agent ?? null,
+      success: Boolean(r.success),
+      createdAt: r.created_at,
+    })),
+  });
+}));
+
 app.post("/api/customer/change-password", rateLimitMiddleware(10, 15 * 60 * 1000), requireCustomerAuth(async (req, res) => {
   try {
     const data = ChangePasswordSchema.parse(req.body);
-    const hdr = req.headers.authorization!;
-    const token = hdr.slice(7);
-    const payload = await verifyToken(token);
-    const id = Number(payload.sub);
+    const id = await resolveCustomerIdFromRequest(req);
+    if (!id) return res.status(401).json({ error: "unauthorized" });
     const { rows } = await pool.query(`select id,password_hash from customers where id=$1`, [id]);
     const customer = rows[0];
     if (!customer || !customer.password_hash) return res.status(401).json({ error: "unauthorized" });

@@ -159,6 +159,8 @@ function save(key: string, value: unknown) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+const getNextNumericId = <T extends { id: number }>(list: T[]) => (list.length ? Math.max(...list.map((item) => item.id)) + 1 : 1);
+
 export function useStore() {
   const [products, setProducts] = useState<Product[]>(() => {
     const loadedRaw = load('candy_products', defaultProducts);
@@ -288,6 +290,11 @@ export function useStore() {
     })();
   }, [apiReady]);
 
+  const refreshArticlesFromApi = useCallback(async () => {
+    const list = await api.getArticles();
+    setArticles(list as Article[]);
+  }, []);
+
   // Products
   const addProduct = useCallback(async (p: Omit<Product, 'id'>) => {
     if (!apiReady) throw new Error('503|api_unavailable');
@@ -326,7 +333,7 @@ export function useStore() {
     if (apiReady) {
       await api.deleteCategory(id);
     }
-    setCategories(prev => prev.filter(c => c.id !== id));
+    setCategories(prev => prev.filter(c => c.id !== id && !c.id.startsWith(`${id}/`)));
   }, [apiReady]);
 
   // Packaging
@@ -356,33 +363,30 @@ export function useStore() {
   const addArticle = useCallback(async (a: Omit<Article, 'id'>) => {
     if (apiReady) {
       await api.addArticle(a);
-      const list = await api.getArticles();
-      setArticles(list as Article[]);
+      await refreshArticlesFromApi();
     } else {
       setArticles(prev => {
-        const id = prev.length ? Math.max(...prev.map(x => x.id)) + 1 : 1;
+        const id = getNextNumericId(prev);
         return [...prev, { ...a, id }];
       });
     }
-  }, [apiReady]);
+  }, [apiReady, refreshArticlesFromApi]);
   const updateArticle = useCallback(async (id: number, data: Partial<Article>) => {
     if (apiReady) {
       await api.updateArticle(id, data);
-      const list = await api.getArticles();
-      setArticles(list as Article[]);
+      await refreshArticlesFromApi();
     } else {
       setArticles(prev => prev.map(a => a.id === id ? { ...a, ...data } : a));
     }
-  }, [apiReady]);
+  }, [apiReady, refreshArticlesFromApi]);
   const deleteArticle = useCallback(async (id: number) => {
     if (apiReady) {
       await api.deleteArticle(id);
-      const list = await api.getArticles();
-      setArticles(list as Article[]);
+      await refreshArticlesFromApi();
     } else {
       setArticles(prev => prev.filter(a => a.id !== id));
     }
-  }, [apiReady]);
+  }, [apiReady, refreshArticlesFromApi]);
 
   // Hero images
   const addHeroImage = useCallback(async (data: { url: string; link?: string | null; active?: boolean }) => {
@@ -391,7 +395,7 @@ export function useStore() {
       setHeroImages(prev => [...prev, { id, url: data.url, link: data.link ?? null, position: prev.length, active: data.active ?? true }]);
     } else {
       setHeroImages(prev => {
-        const id = prev.length ? Math.max(...prev.map(x => x.id)) + 1 : 1;
+        const id = getNextNumericId(prev);
         return [...prev, { id, url: data.url, link: data.link ?? null, position: prev.length, active: data.active ?? true }];
       });
     }
@@ -415,7 +419,7 @@ export function useStore() {
       setPromoBanners(prev => [...prev, { id, url: data.url, link: data.link ?? null, position: prev.length, active: data.active ?? true }]);
     } else {
       setPromoBanners(prev => {
-        const id = prev.length ? Math.max(...prev.map(x => x.id)) + 1 : 1;
+        const id = getNextNumericId(prev);
         return [...prev, { id, url: data.url, link: data.link ?? null, position: prev.length, active: data.active ?? true }];
       });
     }
@@ -480,7 +484,7 @@ export function useStore() {
       setPromos(prev => [...prev, { ...payload, id, active: p.active ?? true } as Promo ]);
     } else {
       setPromos(prev => {
-        const id = prev.length ? Math.max(...prev.map(x => x.id)) + 1 : 1;
+        const id = getNextNumericId(prev);
         return [...prev, { ...payload, id, active: p.active ?? true } as Promo];
       });
     }
