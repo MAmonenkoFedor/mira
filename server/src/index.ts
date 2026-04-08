@@ -1115,34 +1115,38 @@ app.post("/api/categories", requireAuth(async (req, res) => {
 app.put("/api/categories/:id", requireAuth(async (req, res) => {
   const data = CategorySchema.partial({ id: true }).parse(req.body);
   const id = req.params.id;
+  let result;
   if (hasCategoryOrderColumn) {
-    await pool.query(
+    result = await pool.query(
       "update categories set name=coalesce($2,name), emoji=$3, color=$4, show_on_home=coalesce($5,show_on_home), home_order=coalesce($6,home_order), category_order=coalesce($7,category_order) where id=$1",
       [id, data.name ?? null, data.emoji ?? null, data.color ?? null, data.showOnHome ?? null, data.homeOrder ?? null, data.categoryOrder ?? null]
     );
   } else {
-    await pool.query(
+    result = await pool.query(
       "update categories set name=coalesce($2,name), emoji=$3, color=$4, show_on_home=coalesce($5,show_on_home), home_order=coalesce($6,home_order) where id=$1",
       [id, data.name ?? null, data.emoji ?? null, data.color ?? null, data.showOnHome ?? null, data.homeOrder ?? null]
     );
   }
+  if (!result?.rowCount) return res.status(404).json({ error: "not_found" });
   res.json({ ok: true });
 }));
 
 app.put("/api/categories", requireAuth(async (req, res) => {
   const data = CategorySchema.partial().extend({ id: z.string() }).parse(req.body);
   const id = data.id;
+  let result;
   if (hasCategoryOrderColumn) {
-    await pool.query(
+    result = await pool.query(
       "update categories set name=coalesce($2,name), emoji=$3, color=$4, show_on_home=coalesce($5,show_on_home), home_order=coalesce($6,home_order), category_order=coalesce($7,category_order) where id=$1",
       [id, data.name ?? null, data.emoji ?? null, data.color ?? null, data.showOnHome ?? null, data.homeOrder ?? null, data.categoryOrder ?? null]
     );
   } else {
-    await pool.query(
+    result = await pool.query(
       "update categories set name=coalesce($2,name), emoji=$3, color=$4, show_on_home=coalesce($5,show_on_home), home_order=coalesce($6,home_order) where id=$1",
       [id, data.name ?? null, data.emoji ?? null, data.color ?? null, data.showOnHome ?? null, data.homeOrder ?? null]
     );
   }
+  if (!result?.rowCount) return res.status(404).json({ error: "not_found" });
   res.json({ ok: true });
 }));
 
@@ -2309,6 +2313,39 @@ app.post("/api/auth/admins", rateLimitMiddleware(10, 15 * 60 * 1000), requireAut
   }
 }));
 
+app.post("/api/admin/clear-data", requireAuth(async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query(`
+      truncate table
+        order_items,
+        orders,
+        reviews,
+        products,
+        categories,
+        packaging_options,
+        promocodes,
+        articles,
+        hero_images,
+        promo_banners,
+        footer_settings,
+        header_settings,
+        hero_text_settings,
+        feature_blocks_settings,
+        about_settings
+      restart identity cascade
+    `);
+    await client.query("commit");
+    res.json({ ok: true });
+  } catch {
+    await client.query("rollback");
+    res.status(500).json({ error: "clear_failed" });
+  } finally {
+    client.release();
+  }
+}));
+
 async function runBootStep(name: string, fn: () => Promise<void>) {
   try {
     await fn();
@@ -2319,15 +2356,20 @@ async function runBootStep(name: string, fn: () => Promise<void>) {
 }
 
 async function start() {
+  const seedOnBoot = process.env.SEED_ON_BOOT
+    ? String(process.env.SEED_ON_BOOT).toLowerCase() === "true"
+    : process.env.NODE_ENV !== "production";
   await runBootStep("migrate", async () => {
     await migrate(pool);
   });
   await runBootStep("refreshCategoryOrderColumnFlag", async () => {
     await refreshCategoryOrderColumnFlag();
   });
-  await runBootStep("seedIfEmpty", async () => {
-    await seedIfEmpty(pool);
-  });
+  if (seedOnBoot) {
+    await runBootStep("seedIfEmpty", async () => {
+      await seedIfEmpty(pool);
+    });
+  }
   await runBootStep("ensureAdminExists", async () => {
     await ensureAdminExists();
   });

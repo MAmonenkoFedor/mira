@@ -66,7 +66,7 @@ export default function Reviews() {
                 </div>
                 <Stars count={r.rating} />
               </div>
-              <p className="text-sm text-foreground/80 leading-relaxed flex-1">«{r.text}»</p>
+              <p className="text-sm text-foreground/80 leading-relaxed flex-1">{r.text}</p>
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span className="font-medium">{r.name}</span>
                 <span>{r.date}</span>

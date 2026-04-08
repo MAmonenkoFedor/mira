@@ -396,10 +396,23 @@ export default function Admin() {
                   <Pencil size={14} /> Сменить пароль
                 </button>
                 <button
-                  onClick={() => { store.resetToDefaults(); toast.success('Данные сброшены'); }}
+                  onClick={async () => {
+                    const confirmText = 'Очистить БД? Будут удалены товары, категории, статьи, заказы и контент сайта.';
+                    if (!window.confirm(confirmText)) return;
+                    try {
+                      await store.resetToDefaults();
+                      toast.success('База очищена');
+                    } catch (err) {
+                      const code = err instanceof Error ? err.message : '';
+                      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                      else toast.error('Не удалось очистить базу');
+                    }
+                  }}
+                  title="Очистить БД"
+                  aria-label="Очистить БД"
                   className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors"
                 >
-                  <RotateCcw size={14} /> Сбросить
+                  <RotateCcw size={14} /> Очистить БД
                 </button>
               </div>
             </div>
@@ -3219,7 +3232,7 @@ function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
                   <span className="text-xs font-medium">{r.rating} / 5</span>
                 </div>
               </div>
-              <div className="text-sm text-foreground/80 whitespace-pre-wrap">«{r.text}»</div>
+              <div className="text-sm text-foreground/80 whitespace-pre-wrap">{r.text}</div>
               {editingReviewId === r.id && (
                 <div className="grid gap-2">
                   <div className="grid sm:grid-cols-2 gap-2">
@@ -4748,9 +4761,7 @@ function FooterTab({ store }: { store: ReturnType<typeof useStore> }) {
       });
       toast.success('Футер обновлён');
     } catch (err) {
-      const code = err instanceof Error ? err.message : '';
-      if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
-      else toast.error('Не удалось обновить футер');
+      toastActionError(err, 'Не удалось обновить футер');
     }
   };
 

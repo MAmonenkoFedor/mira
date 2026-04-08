@@ -296,6 +296,9 @@ export const api = {
       fetch(`${base}/api/auth/admin-security`, withAuth())
     );
   },
+  async clearAdminData() {
+    return j(fetch(`${base}/api/admin/clear-data`, withAuth({ method: "POST" })));
+  },
   async requestPasswordReset(email: string) {
     return j(fetch(`${base}/api/auth/request-reset`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) }));
   },

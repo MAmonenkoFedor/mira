@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { api } from '@/lib/api';
 import { getToken } from '@/lib/auth';
-import { products as defaultProducts, categories as defaultCategories, badges as defaultBadges, packagingOptions as defaultPackagingOptions, footerData, heroTextData, featureBlocks as defaultFeatureBlocks, aboutData, headerData, getProductBadgeIds, type FeatureBlock, type FooterData, type HeroTextData, type AboutData, type HeaderData, type Product, type Category, type Promo, type Badge, type PackagingOption, type PromoBanner } from './data';
+import { footerData, heroTextData, featureBlocks as defaultFeatureBlocks, aboutData, headerData, getProductBadgeIds, type FeatureBlock, type FooterData, type HeroTextData, type AboutData, type HeaderData, type Product, type Category, type Promo, type Badge, type PackagingOption, type PromoBanner } from './data';
 
 export interface Article {
   id: number;
@@ -36,57 +36,7 @@ export interface Order {
   items: OrderItem[];
 }
 
-const defaultArticles: Article[] = [
-  {
-    id: 1, slug: 'kak-vybrat-sladosti-dlya-detskogo-prazdnika',
-    title: 'Как выбрать сладости для детского праздника',
-    excerpt: 'Рассказываем, на что обратить внимание при выборе конфет и шоколада для детей: состав, аллергены, возрастные рекомендации и идеи для подарочных наборов.',
-    content: 'Детский праздник — это всегда радость, смех и, конечно, сладости. Но как выбрать конфеты и шоколад, которые будут не только вкусными, но и безопасными для ребёнка?\n\n## На что обратить внимание\n\n**Состав.** Читайте этикетки: избегайте продуктов с искусственными красителями (Е102, Е110, Е124), консервантами и трансжирами. Натуральные ингредиенты — залог качества.\n\n**Аллергены.** Орехи, молоко, глютен — самые частые аллергены в сладостях. Если среди гостей есть дети с аллергией, подготовьте безопасные альтернативы.\n\n**Возрастные рекомендации.** До 3 лет лучше избегать шоколада и карамели. Для малышей подойдут фруктовые пастилки и мармелад без сахара.\n\n## Идеи для подарочных наборов\n\n1. **Фруктовая корзинка** — мармелад, пастила, сухофрукты в шоколаде\n2. **Шоколадный сундучок** — молочный шоколад, какао-бобы, шоколадные фигурки\n3. **Мировые сладости** — моти, турецкий лукум, бельгийские трюфели\n\nВ нашем магазине вы найдёте готовые наборы для любого возраста и бюджета. Все сладости проходят контроль качества и имеют сертификаты безопасности.',
-    tag: 'Советы', readTime: '5 мин',
-  },
-  {
-    id: 2, slug: 'moti-kitkat-matcha-i-drugie-aziatskie-sladosti',
-    title: 'Моти, KitKat матча и другие азиатские сладости',
-    excerpt: 'Японские и корейские десерты покоряют Россию. Разбираемся, чем моти отличается от дайфуку и какие вкусы стоит попробовать первыми.',
-    content: 'Азиатские сладости — один из главных трендов последних лет. Нежные текстуры, необычные вкусы и красивая подача делают их идеальным подарком и лакомством.\n\n## Моти vs Дайфуку\n\n**Моти** — это рисовое тесто из клейкого риса (мотигомэ). Само по себе оно нейтральное и мягкое, как зефир.\n\n**Дайфуку** — это моти с начинкой. Классическая начинка — паста из красных бобов (анко), но сегодня популярны:\n- Клубника в сливках\n- Манго\n- Матча с белым шоколадом\n- Арахисовая паста\n\n## KitKat по-японски\n\nВ Японии выпущено более 300 вкусов KitKat! Самые интересные:\n- **Матча** — горьковатый зелёный чай\n- **Саке** — с лёгким алкогольным послевкусием\n- **Клубничный чизкейк** — сладкий и сливочный\n- **Васаби** — для самых смелых\n\n## Что попробовать первым?\n\nЕсли вы новичок в азиатских сладостях, начните с клубничного моти и матча KitKat — это самые «дружелюбные» вкусы для европейского нёба.',
-    tag: 'Обзор', readTime: '4 мин',
-  },
-  {
-    id: 3, slug: 'shokolad-polza-ili-vred-dlya-rebyonka',
-    title: 'Шоколад: польза или вред для ребёнка?',
-    excerpt: 'Педиатры советуют вводить шоколад в рацион постепенно. Узнайте, с какого возраста, в каком количестве и какой шоколад лучше выбирать.',
-    content: 'Шоколад — один из самых любимых десертов в мире. Но когда речь идёт о детях, у родителей возникает множество вопросов.\n\n## С какого возраста можно давать шоколад?\n\nБольшинство педиатров рекомендуют:\n- **До 1,5 лет** — никакого шоколада\n- **1,5–3 года** — можно попробовать белый шоколад (без кофеина)\n- **С 3 лет** — молочный шоколад в небольших количествах (до 25 г в день)\n- **С 7 лет** — можно пробовать тёмный шоколад\n\n## Польза шоколада\n\n**Тёмный шоколад (70%+ какао)** содержит:\n- Антиоксиданты (флавоноиды)\n- Магний и железо\n- Теобромин — мягко стимулирует нервную систему\n\n## Возможный вред\n\n- **Кариес** — сахар в молочном шоколаде опасен для зубов\n- **Аллергия** — какао-бобы могут вызвать реакцию\n- **Перевозбуждение** — кофеин и теобромин могут нарушать сон\n\n## Какой шоколад выбрать?\n\nИщите шоколад с коротким составом: какао-масло, какао тёртое, сахар. Без пальмового масла, без ароматизаторов. В нашем магазине все шоколадные изделия проходят строгий отбор по составу.',
-    tag: 'Здоровье', readTime: '6 мин',
-  },
-  {
-    id: 4, slug: 'dostavka',
-    title: 'Доставка сладостей: быстро и удобно',
-    excerpt: 'Сроки, варианты и правила доставки по Москве и России. Рассказываем, как всё организовано.',
-    content: 'Мы доставляем заказы по Москве и регионам России — быстро и бережно.\n\n## Варианты доставки\n\n- **Курьер по Москве** — от 1 дня\n- **ПВЗ по России** — от 2–4 дней\n\n## Как мы упаковываем\n\nКаждый набор надёжно фиксируется, чтобы сладости доехали в идеальном виде. Для жаркого сезона добавляем термопакеты.\n\n## Отслеживание\n\nПосле отправки вы получаете трек-номер и можете следить за статусом посылки.',
-    tag: 'Новости', readTime: '3 мин',
-  },
-  {
-    id: 5, slug: 'naturalnyy-sostav',
-    title: 'Натуральный состав и качество',
-    excerpt: 'Без лишних добавок и искусственных красителей. В составе только качественные ингредиенты.',
-    content: 'Мы выбираем ингредиенты, которые подходят детям и безопасны для ежедневных угощений.\n\n## Что внутри\n\n- натуральные ароматизаторы\n- качественное какао и молоко\n- минимум сахара там, где это возможно\n\n## Контроль качества\n\nПоставщики проходят отбор, а каждая партия проверяется на свежесть и соблюдение условий хранения.',
-    tag: 'Советы', readTime: '4 мин',
-  },
-  {
-    id: 6, slug: 'podarochnaya-upakovka',
-    title: 'Подарочная упаковка',
-    excerpt: 'Как мы оформляем наборы, чтобы подарок выглядел празднично и радовал получателя.',
-    content: 'Подарочная упаковка — это часть впечатления. Мы используем плотные коробки, аккуратные ленты и тематические открытки.\n\n## Что входит\n\n- фирменная коробка\n- декоративная лента\n- открытка с пожеланием\n\nЕсли нужен особый стиль или цвет, напишите в комментарии к заказу.',
-    tag: 'Обзор', readTime: '3 мин',
-  },
-  {
-    id: 7, slug: 'sdelano-s-lyubovyu',
-    title: 'Сделано с любовью',
-    excerpt: 'Немного о ручной работе кондитеров и о том, почему это важно для вкуса.',
-    content: 'Наши наборы собираются вручную: от подбора вкусов до финальной упаковки.\n\n## Почему это важно\n\nРучная работа позволяет контролировать качество каждой позиции и создавать красивые, гармоничные наборы. Мы уделяем внимание деталям и гарантируем свежесть каждого изделия.',
-    tag: 'Рецепты', readTime: '2 мин',
-  },
-];
+const defaultArticles: Article[] = [];
 
 const normalizeArticles = (list: Article[]) => {
   const map = new Map<string, Article>();
@@ -159,26 +109,19 @@ function save(key: string, value: unknown) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
-const getNextNumericId = <T extends { id: number }>(list: T[]) => (list.length ? Math.max(...list.map((item) => item.id)) + 1 : 1);
-
 export function useStore() {
   const [products, setProducts] = useState<Product[]>(() => {
-    const loadedRaw = load('candy_products', defaultProducts);
-    const loaded = Array.isArray(loadedRaw) ? loadedRaw : defaultProducts;
+    const loadedRaw = load('candy_products', []);
+    const loaded = Array.isArray(loadedRaw) ? loadedRaw : [];
     return loaded as Product[];
   });
   const [categories, setCategories] = useState<Category[]>(() => {
-    const loadedRaw = load('candy_categories', defaultCategories);
-    const loaded = Array.isArray(loadedRaw) ? loadedRaw : defaultCategories;
-    const map = new Map<string, Category>();
-    for (const c of loaded as Category[]) map.set(c.id, c);
-    for (const c of defaultCategories) {
-      if (!map.has(c.id)) map.set(c.id, c);
-    }
-    return Array.from(map.values());
+    const loadedRaw = load('candy_categories', []);
+    const loaded = Array.isArray(loadedRaw) ? loadedRaw : [];
+    return loaded as Category[];
   });
   const [articles, setArticles] = useState<Article[]>(() => {
-    const loaded = load('candy_articles', defaultArticles);
+    const loaded = load('candy_articles', []);
     return normalizeArticles(loaded as Article[]);
   });
   const [heroImages, setHeroImages] = useState<HeroImage[]>(() =>
@@ -187,10 +130,10 @@ export function useStore() {
   const [promoBanners, setPromoBanners] = useState<PromoBanner[]>(() =>
     load('candy_promo_banners', [])
   );
-  const [badges, setBadges] = useState<Badge[]>(() => load('candy_badges', defaultBadges));
+  const [badges, setBadges] = useState<Badge[]>(() => load('candy_badges', []));
   const [packagingOptions, setPackagingOptions] = useState<PackagingOption[]>(() => {
-    const loadedRaw = load('candy_packaging', defaultPackagingOptions);
-    const loaded = Array.isArray(loadedRaw) ? loadedRaw : defaultPackagingOptions;
+    const loadedRaw = load('candy_packaging', []);
+    const loaded = Array.isArray(loadedRaw) ? loadedRaw : [];
     return loaded as PackagingOption[];
   });
   const [orders, setOrders] = useState<Order[]>(() => load('candy_orders', []));
@@ -294,6 +237,10 @@ export function useStore() {
     const list = await api.getArticles();
     setArticles(list as Article[]);
   }, []);
+  const refreshCategoriesFromApi = useCallback(async () => {
+    const list = await api.getCategories();
+    setCategories(list as Category[]);
+  }, []);
 
   // Products
   const addProduct = useCallback(async (p: Omit<Product, 'id'>) => {
@@ -314,144 +261,110 @@ export function useStore() {
 
   // Categories
   const addCategory = useCallback(async (c: Omit<Category, 'id'> & { id?: string }) => {
+    if (!apiReady) throw new Error('503|api_unavailable');
     const id = c.id || `cat_${Date.now()}`;
-    if (apiReady) {
-      await api.addCategory({ ...c, id });
-    }
-    setCategories(prev => {
-      if (prev.find(x => x.id === id)) return prev;
-      return [...prev, { ...c, id }];
-    });
-  }, [apiReady]);
+    await api.addCategory({ ...c, id });
+    await refreshCategoriesFromApi();
+  }, [apiReady, refreshCategoriesFromApi]);
   const updateCategory = useCallback(async (id: string, data: Partial<Category>) => {
-    if (apiReady) {
-      await api.updateCategory(id, data);
-    }
-    setCategories(prev => prev.map(c => c.id === id ? { ...c, ...data } : c));
-  }, [apiReady]);
+    if (!apiReady) throw new Error('503|api_unavailable');
+    await api.updateCategory(id, data);
+    await refreshCategoriesFromApi();
+  }, [apiReady, refreshCategoriesFromApi]);
   const deleteCategory = useCallback(async (id: string) => {
-    if (apiReady) {
-      await api.deleteCategory(id);
-    }
-    setCategories(prev => prev.filter(c => c.id !== id && !c.id.startsWith(`${id}/`)));
-  }, [apiReady]);
+    if (!apiReady) throw new Error('503|api_unavailable');
+    await api.deleteCategory(id);
+    await refreshCategoriesFromApi();
+  }, [apiReady, refreshCategoriesFromApi]);
 
   // Packaging
   const addPackagingOption = useCallback(async (p: PackagingOption) => {
-    if (apiReady) {
-      await api.addPackagingOption(p);
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    await api.addPackagingOption(p);
     setPackagingOptions(prev => {
       if (prev.find(x => x.id === p.id)) return prev;
       return [...prev, p];
     });
   }, [apiReady]);
   const updatePackagingOption = useCallback(async (id: string, data: Partial<PackagingOption>) => {
-    if (apiReady) {
-      await api.updatePackagingOption(id, data);
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    await api.updatePackagingOption(id, data);
     setPackagingOptions(prev => prev.map(p => p.id === id ? { ...p, ...data } : p));
   }, [apiReady]);
   const deletePackagingOption = useCallback(async (id: string) => {
-    if (apiReady) {
-      await api.deletePackagingOption(id);
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    await api.deletePackagingOption(id);
     setPackagingOptions(prev => prev.filter(p => p.id !== id));
   }, [apiReady]);
 
   // Articles
   const addArticle = useCallback(async (a: Omit<Article, 'id'>) => {
-    if (apiReady) {
-      await api.addArticle(a);
-      await refreshArticlesFromApi();
-    } else {
-      setArticles(prev => {
-        const id = getNextNumericId(prev);
-        return [...prev, { ...a, id }];
-      });
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    await api.addArticle(a);
+    await refreshArticlesFromApi();
   }, [apiReady, refreshArticlesFromApi]);
   const updateArticle = useCallback(async (id: number, data: Partial<Article>) => {
-    if (apiReady) {
-      await api.updateArticle(id, data);
-      await refreshArticlesFromApi();
-    } else {
-      setArticles(prev => prev.map(a => a.id === id ? { ...a, ...data } : a));
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    await api.updateArticle(id, data);
+    await refreshArticlesFromApi();
   }, [apiReady, refreshArticlesFromApi]);
   const deleteArticle = useCallback(async (id: number) => {
-    if (apiReady) {
-      await api.deleteArticle(id);
-      await refreshArticlesFromApi();
-    } else {
-      setArticles(prev => prev.filter(a => a.id !== id));
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    await api.deleteArticle(id);
+    await refreshArticlesFromApi();
   }, [apiReady, refreshArticlesFromApi]);
 
   // Hero images
   const addHeroImage = useCallback(async (data: { url: string; link?: string | null; active?: boolean }) => {
-    if (apiReady) {
-      const { id } = await api.addHeroImage({ ...data, position: heroImages.length }) as { id: number };
-      setHeroImages(prev => [...prev, { id, url: data.url, link: data.link ?? null, position: prev.length, active: data.active ?? true }]);
-    } else {
-      setHeroImages(prev => {
-        const id = getNextNumericId(prev);
-        return [...prev, { id, url: data.url, link: data.link ?? null, position: prev.length, active: data.active ?? true }];
-      });
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    const { id } = await api.addHeroImage({ ...data, position: heroImages.length }) as { id: number };
+    setHeroImages(prev => [...prev, { id, url: data.url, link: data.link ?? null, position: prev.length, active: data.active ?? true }]);
   }, [apiReady, heroImages.length]);
   const updateHeroImage = useCallback(async (id: number, data: Partial<HeroImage>) => {
-    if (apiReady) {
-      await api.updateHeroImage(id, data);
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    await api.updateHeroImage(id, data);
     setHeroImages(prev => prev.map(h => h.id === id ? { ...h, ...data } : h).sort((a,b)=> a.position - b.position));
   }, [apiReady]);
   const deleteHeroImage = useCallback(async (id: number) => {
-    if (apiReady) {
-      await api.deleteHeroImage(id);
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    await api.deleteHeroImage(id);
     setHeroImages(prev => prev.filter(h => h.id !== id).map((h,i)=> ({ ...h, position: i })));
   }, [apiReady]);
 
   const addPromoBanner = useCallback(async (data: { url: string; link?: string | null; active?: boolean }) => {
-    if (apiReady) {
-      const { id } = await api.addPromoBanner({ ...data, position: promoBanners.length }) as { id: number };
-      setPromoBanners(prev => [...prev, { id, url: data.url, link: data.link ?? null, position: prev.length, active: data.active ?? true }]);
-    } else {
-      setPromoBanners(prev => {
-        const id = getNextNumericId(prev);
-        return [...prev, { id, url: data.url, link: data.link ?? null, position: prev.length, active: data.active ?? true }];
-      });
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    const { id } = await api.addPromoBanner({ ...data, position: promoBanners.length }) as { id: number };
+    setPromoBanners(prev => [...prev, { id, url: data.url, link: data.link ?? null, position: prev.length, active: data.active ?? true }]);
   }, [apiReady, promoBanners.length]);
   const updatePromoBanner = useCallback(async (id: number, data: Partial<PromoBanner>) => {
-    if (apiReady) {
-      await api.updatePromoBanner(id, data);
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    await api.updatePromoBanner(id, data);
     setPromoBanners(prev => prev.map(h => h.id === id ? { ...h, ...data } : h).sort((a,b)=> a.position - b.position));
   }, [apiReady]);
   const deletePromoBanner = useCallback(async (id: number) => {
-    if (apiReady) {
-      await api.deletePromoBanner(id);
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    await api.deletePromoBanner(id);
     setPromoBanners(prev => prev.filter(h => h.id !== id).map((h,i)=> ({ ...h, position: i })));
   }, [apiReady]);
 
-  const resetToDefaults = useCallback(() => {
-    setProducts(defaultProducts);
-    setCategories(defaultCategories);
-    setArticles(defaultArticles);
-    setHeroImages([{ id: 1, url: '/images/hero-sweets.jpg', position: 0, active: true }]);
+  const resetToDefaults = useCallback(async () => {
+    if (!apiReady) throw new Error('503|api_unavailable');
+    await api.clearAdminData();
+    setProducts([]);
+    setCategories([]);
+    setArticles([]);
+    setHeroImages([]);
     setPromoBanners([]);
-    setBadges(defaultBadges);
+    setPromos([]);
     setOrders([]);
+    setPackagingOptions([]);
     setFavorites([]);
     setFooter(footerData);
     setHeader(headerData);
     setHeroText(heroTextData);
     setFeatureBlocks(defaultFeatureBlocks);
     setAbout(aboutData);
-  }, []);
+  }, [apiReady]);
 
   const addBadge = useCallback((b: Badge) => {
     setBadges(prev => {
@@ -479,33 +392,25 @@ export function useStore() {
   // Promos
   const addPromo = useCallback(async (p: Omit<Promo, 'id' | 'active'> & { active?: boolean }) => {
     const payload = { ...p, code: p.code.toUpperCase() };
-    if (apiReady) {
-      const { id } = await api.addPromo(payload) as { id: number };
-      setPromos(prev => [...prev, { ...payload, id, active: p.active ?? true } as Promo ]);
-    } else {
-      setPromos(prev => {
-        const id = getNextNumericId(prev);
-        return [...prev, { ...payload, id, active: p.active ?? true } as Promo];
-      });
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    const { id } = await api.addPromo(payload) as { id: number };
+    setPromos(prev => [...prev, { ...payload, id, active: p.active ?? true } as Promo ]);
   }, [apiReady]);
   const updatePromo = useCallback(async (id: number, data: Partial<Promo>) => {
-    if (apiReady) {
-      await api.updatePromo(id, data);
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    await api.updatePromo(id, data);
     setPromos(prev => prev.map(pr => pr.id === id ? { ...pr, ...data } : pr));
   }, [apiReady]);
   const deletePromo = useCallback(async (id: number) => {
-    if (apiReady) {
-      await api.deletePromo(id);
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    await api.deletePromo(id);
     setPromos(prev => prev.filter(pr => pr.id !== id));
   }, [apiReady]);
 
   const updateOrder = useCallback(async (id: number, data: Partial<Order>) => {
-    if (apiReady && getToken()) {
-      await api.updateOrder(id, data);
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    if (!getToken()) throw new Error('401|auth_required');
+    await api.updateOrder(id, data);
     setOrders(prev => prev.map(o => o.id === id ? { ...o, ...data } : o));
   }, [apiReady]);
 
@@ -523,39 +428,32 @@ export function useStore() {
   }, [favorites, products]);
 
   const updateFooter = useCallback(async (data: FooterData) => {
-    if (apiReady) {
-      await api.updateFooter(data);
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    await api.updateFooter(data);
     setFooter(data);
   }, [apiReady]);
 
   const updateHeader = useCallback(async (data: Partial<HeaderData>) => {
-    if (apiReady) {
-      try {
-        await api.updateHeader(data);
-      } catch {}
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    await api.updateHeader(data);
     setHeader(prev => normalizeHeader({ ...prev, ...data }));
   }, [apiReady]);
 
   const updateHeroText = useCallback(async (data: HeroTextData) => {
-    if (apiReady) {
-      await api.updateHeroText(data);
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    await api.updateHeroText(data);
     setHeroText(normalizeHeroText(data));
   }, [apiReady]);
 
   const updateFeatureBlocks = useCallback(async (blocks: FeatureBlock[]) => {
-    if (apiReady) {
-      await api.updateFeatureBlocks(blocks);
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    await api.updateFeatureBlocks(blocks);
     setFeatureBlocks(blocks);
   }, [apiReady]);
 
   const updateAbout = useCallback(async (data: AboutData) => {
-    if (apiReady) {
-      await api.updateAbout(data);
-    }
+    if (!apiReady) throw new Error('503|api_unavailable');
+    await api.updateAbout(data);
     setAbout(normalizeAbout(data));
   }, [apiReady]);
 

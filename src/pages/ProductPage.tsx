@@ -526,7 +526,7 @@ export default function ProductPage() {
                   </div>
                   <Stars count={r.rating} />
                 </div>
-                <div className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">«{r.text}»</div>
+                <div className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">{r.text}</div>
                 {r.image && (
                   <img
                     src={resolveMediaUrl(r.image)}
