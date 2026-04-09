@@ -108,6 +108,7 @@ export interface FooterData {
   email: string;
   address: string;
   socialItems: string[];
+  socialLinks: Array<{ label: string; url?: string }>;
   copyright: string;
 }
 
@@ -159,6 +160,11 @@ export const footerData: FooterData = {
   email: '✉️ hello@candyland.ru',
   address: '📍 Москва, ул. Сладкая, 15',
   socialItems: ['📱 Telegram', '📷 Instagram', '💬 VK'],
+  socialLinks: [
+    { label: '📱 Telegram', url: 'https://t.me/' },
+    { label: '📷 Instagram', url: 'https://instagram.com/' },
+    { label: '💬 VK', url: 'https://vk.com/' },
+  ],
   copyright: '© 2026 МираВкус. Все права защищены.',
 };
 

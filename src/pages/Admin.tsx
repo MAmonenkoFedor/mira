@@ -4700,6 +4700,21 @@ function IntegrationsTab() {
 }
 
 function FooterTab({ store }: { store: ReturnType<typeof useStore> }) {
+  const toSocialLinksText = (links: Array<{ label: string; url?: string }>, fallbackItems: string[]) => {
+    if (Array.isArray(links) && links.length) {
+      return links
+        .map((item) => {
+          const label = String(item.label || '').trim();
+          const url = String(item.url || '').trim();
+          if (!label) return '';
+          return url ? `${label} | ${url}` : label;
+        })
+        .filter(Boolean)
+        .join('\n');
+    }
+    return fallbackItems.join('\n');
+  };
+
   const [form, setForm] = useState(() => ({
     brandEmoji: store.footer.brandEmoji,
     brandName: store.footer.brandName,
@@ -4710,7 +4725,7 @@ function FooterTab({ store }: { store: ReturnType<typeof useStore> }) {
     phone: store.footer.phone,
     email: store.footer.email,
     address: store.footer.address,
-    socialItems: store.footer.socialItems.join('\n'),
+    socialItems: toSocialLinksText(store.footer.socialLinks || [], store.footer.socialItems),
     copyright: store.footer.copyright,
   }));
 
@@ -4725,7 +4740,7 @@ function FooterTab({ store }: { store: ReturnType<typeof useStore> }) {
       phone: store.footer.phone,
       email: store.footer.email,
       address: store.footer.address,
-      socialItems: store.footer.socialItems.join('\n'),
+      socialItems: toSocialLinksText(store.footer.socialLinks || [], store.footer.socialItems),
       copyright: store.footer.copyright,
     });
   }, [store.footer]);
@@ -4735,7 +4750,19 @@ function FooterTab({ store }: { store: ReturnType<typeof useStore> }) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const deliveryItems = form.deliveryItems.split('\n').map(s => s.trim()).filter(Boolean);
-    const socialItems = form.socialItems.split('\n').map(s => s.trim()).filter(Boolean);
+    const socialRows = form.socialItems.split('\n').map(s => s.trim()).filter(Boolean);
+    const socialLinks = socialRows
+      .map((row) => {
+        const [rawLabel, ...rawUrlParts] = row.split('|');
+        const label = String(rawLabel || '').trim();
+        const rawUrl = rawUrlParts.join('|').trim();
+        if (!label) return null;
+        if (!rawUrl) return { label } as { label: string; url?: string };
+        const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+        return { label, url };
+      })
+      .filter((item): item is { label: string; url?: string } => Boolean(item));
+    const socialItems = socialLinks.map((item) => item.label);
     if (!form.brandName.trim()) { toast.error('Введите название магазина'); return; }
     if (!form.description.trim()) { toast.error('Введите описание'); return; }
     if (!form.deliveryTitle.trim()) { toast.error('Введите заголовок доставки'); return; }
@@ -4757,6 +4784,7 @@ function FooterTab({ store }: { store: ReturnType<typeof useStore> }) {
         email: form.email.trim(),
         address: form.address.trim(),
         socialItems,
+        socialLinks,
         copyright: form.copyright.trim(),
       });
       toast.success('Футер обновлён');
@@ -4821,9 +4849,9 @@ function FooterTab({ store }: { store: ReturnType<typeof useStore> }) {
       </div>
 
       <div>
-        <label className="text-xs font-medium text-muted-foreground mb-1 block">Соцсети (по одному в строке)</label>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Соцсети (по одной в строке: Название | Ссылка)</label>
         <textarea value={form.socialItems} onChange={e => set('socialItems', e.target.value)} maxLength={200}
-          rows={2} className="admin-input resize-y" placeholder="📱 Telegram" />
+          rows={3} className="admin-input resize-y" placeholder="📱 Telegram | t.me/your_channel" />
       </div>
 
       <div>

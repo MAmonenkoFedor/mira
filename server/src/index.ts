@@ -466,6 +466,10 @@ const FooterSchema = z.object({
   email: z.string().min(1),
   address: z.string().min(1),
   socialItems: z.array(z.string().min(1)),
+  socialLinks: z.array(z.object({
+    label: z.string().min(1),
+    url: z.string().url().optional(),
+  })).optional().default([]),
   copyright: z.string().min(1),
 });
 const HeaderSchema = z.object({
@@ -513,6 +517,11 @@ const defaultFooter = {
   email: "✉️ hello@candyland.ru",
   address: "📍 Москва, ул. Сладкая, 15",
   socialItems: ["📱 Telegram", "📷 Instagram", "💬 VK"],
+  socialLinks: [
+    { label: "📱 Telegram", url: "https://t.me/" },
+    { label: "📷 Instagram", url: "https://instagram.com/" },
+    { label: "💬 VK", url: "https://vk.com/" },
+  ],
   copyright: "© 2026 МираВкус. Все права защищены.",
 };
 const defaultHeader = {
@@ -1785,8 +1794,9 @@ app.put("/api/feature-blocks", requireAuth(async (req, res) => {
 app.get("/api/footer", async (_req, res) => {
   const { rows } = await pool.query("select data from footer_settings where id=1");
   if (!rows[0]) return res.json(defaultFooter);
-  const data = rows[0].data || defaultFooter;
-  res.json(data);
+  const data = rows[0].data || {};
+  const merged = { ...defaultFooter, ...data };
+  res.json(FooterSchema.parse(merged));
 });
 
 app.put("/api/footer", requireAuth(async (req, res) => {

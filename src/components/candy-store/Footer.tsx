@@ -1,8 +1,37 @@
 import { useMemo, useState } from 'react';
 import { useStore } from './useStore';
 
+type SocialLink = { label: string; url?: string };
+
 export default function Footer() {
   const { footer } = useStore();
+  const socialLinks: SocialLink[] = useMemo(() => {
+    const footerWithLinks = footer as typeof footer & { socialLinks?: SocialLink[] };
+    if (Array.isArray(footerWithLinks.socialLinks) && footerWithLinks.socialLinks.length > 0) {
+      return footerWithLinks.socialLinks;
+    }
+    return footer.socialItems.map((item) => ({ label: item }));
+  }, [footer]);
+  const renderSocialItem = (item: SocialLink, i: number) => {
+    if (!item.url) {
+      return (
+        <span key={`${item.label}-${i}`} className="hover:scale-110 transition-transform cursor-pointer">
+          {item.label}
+        </span>
+      );
+    }
+    return (
+      <a
+        key={`${item.label}-${i}`}
+        href={item.url}
+        target="_blank"
+        rel="noreferrer"
+        className="hover:scale-110 transition-transform inline-block hover:text-foreground"
+      >
+        {item.label}
+      </a>
+    );
+  };
   const logoCandidates = useMemo(
     () => ['/logo.png', '/logo.webp', '/logo.svg', '/images/logo.png', '/images/logo.webp', '/images/logo.svg'],
     []
@@ -53,9 +82,7 @@ export default function Footer() {
               <li>{footer.email}</li>
               <li>{footer.address}</li>
               <li className="flex gap-3 pt-2">
-                {footer.socialItems.map((item, i) => (
-                  <span key={i} className="hover:scale-110 transition-transform cursor-pointer">{item}</span>
-                ))}
+                {socialLinks.map(renderSocialItem)}
               </li>
             </ul>
           </div>
