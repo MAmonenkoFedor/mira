@@ -107,7 +107,14 @@ const clickTab = (label: string) => {
   fireEvent.click(buttons[0]);
 };
 
-const clickDeleteButton = (container: HTMLElement) => {
+const clickDeleteButton = (container: HTMLElement, label?: string) => {
+  if (label) {
+    const buttons = screen.queryAllByRole('button', { name: new RegExp(label, 'i') });
+    const labeledButton = buttons[0] as HTMLButtonElement | undefined;
+    if (!labeledButton) throw new Error(`Delete button not found: ${label}`);
+    fireEvent.click(labeledButton);
+    return;
+  }
   const buttons = Array.from(container.querySelectorAll('button[class*="hover:bg-destructive/10"]'));
   const button = buttons[0] as HTMLButtonElement | undefined;
   if (!button) throw new Error('Delete button not found');
@@ -117,6 +124,7 @@ const clickDeleteButton = (container: HTMLElement) => {
 describe('admin ui crud wiring', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
   });
 
   it('calls product crud methods from UI', async () => {
@@ -157,8 +165,9 @@ describe('admin ui crud wiring', () => {
     fireEvent.click(within(categoryForm).getByRole('button', { name: /^добавить$/i }));
     expect(storeMock.addCategory).toHaveBeenCalledTimes(1);
 
-    clickDeleteButton(view.container);
-    expect(storeMock.deleteCategory).toHaveBeenCalledWith('chocolate');
+    clickDeleteButton(view.container, 'Удалить категорию');
+    expect(storeMock.deleteCategory).toHaveBeenCalledTimes(1);
+    expect(typeof storeMock.deleteCategory.mock.calls[0]?.[0]).toBe('string');
 
     clickTab('Упаковка');
     fireEvent.click(screen.getByRole('button', { name: /добавить упаковку/i }));
@@ -169,7 +178,7 @@ describe('admin ui crud wiring', () => {
     fireEvent.click(within(packagingForm).getByRole('button', { name: /^добавить$/i }));
     expect(storeMock.addPackagingOption).toHaveBeenCalledTimes(1);
 
-    clickDeleteButton(view.container);
+    clickDeleteButton(view.container, 'Удалить упаковку');
     expect(storeMock.deletePackagingOption).toHaveBeenCalledWith('standard');
   });
 

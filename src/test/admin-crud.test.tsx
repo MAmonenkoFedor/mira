@@ -44,6 +44,8 @@ const { apiMock } = vi.hoisted(() => ({
     updateHeroText: vi.fn(),
     updateFeatureBlocks: vi.fn(),
     updateAbout: vi.fn(),
+    getOrders: vi.fn(),
+    clearAdminData: vi.fn(),
   },
 }));
 
@@ -59,18 +61,119 @@ describe('admin crud', () => {
     localStorage.clear();
     vi.clearAllMocks();
     getTokenMock.mockReturnValue(null);
-    apiMock.getCategories.mockRejectedValue(new Error('offline'));
-    apiMock.getProducts.mockRejectedValue(new Error('offline'));
-    apiMock.getArticles.mockRejectedValue(new Error('offline'));
-    apiMock.getPromos.mockRejectedValue(new Error('offline'));
-    apiMock.getHeroImages.mockRejectedValue(new Error('offline'));
-    apiMock.getFooter.mockRejectedValue(new Error('offline'));
-    apiMock.getHeader.mockRejectedValue(new Error('offline'));
-    apiMock.getPackagingOptions.mockRejectedValue(new Error('offline'));
-    apiMock.getPromoBanners.mockRejectedValue(new Error('offline'));
-    apiMock.getHeroText.mockRejectedValue(new Error('offline'));
-    apiMock.getFeatureBlocks.mockRejectedValue(new Error('offline'));
-    apiMock.getAbout.mockRejectedValue(new Error('offline'));
+    let nextProductId = 100;
+    let nextArticleId = 100;
+    let nextPromoId = 100;
+    let nextHeroImageId = 100;
+    let nextPromoBannerId = 100;
+    let categoriesState: any[] = [];
+    let productsState: any[] = [];
+    let articlesState: any[] = [];
+    let promosState: any[] = [];
+    let heroImagesState: any[] = [];
+    let promoBannersState: any[] = [];
+    let packagingState: any[] = [];
+
+    apiMock.getCategories.mockImplementation(async () => categoriesState);
+    apiMock.getProducts.mockImplementation(async () => productsState);
+    apiMock.getArticles.mockImplementation(async () => articlesState);
+    apiMock.getPromos.mockImplementation(async () => promosState);
+    apiMock.getHeroImages.mockImplementation(async () => heroImagesState);
+    apiMock.getFooter.mockResolvedValue(null);
+    apiMock.getHeader.mockResolvedValue(null);
+    apiMock.getPackagingOptions.mockImplementation(async () => packagingState);
+    apiMock.getPromoBanners.mockImplementation(async () => promoBannersState);
+    apiMock.getHeroText.mockResolvedValue(null);
+    apiMock.getFeatureBlocks.mockResolvedValue(null);
+    apiMock.getAbout.mockResolvedValue(null);
+    apiMock.getOrders.mockImplementation(async () => JSON.parse(localStorage.getItem('candy_orders') || '[]'));
+
+    apiMock.addProduct.mockImplementation(async (payload: any) => {
+      const next = { ...payload, id: nextProductId++ };
+      productsState = [...productsState, next];
+      return { id: next.id };
+    });
+    apiMock.updateProduct.mockImplementation(async (id: number, data: any) => {
+      productsState = productsState.map((p) => (p.id === id ? { ...p, ...data } : p));
+    });
+    apiMock.deleteProduct.mockImplementation(async (id: number) => {
+      productsState = productsState.filter((p) => p.id !== id);
+    });
+
+    apiMock.addCategory.mockImplementation(async (payload: any) => {
+      categoriesState = [...categoriesState, payload];
+    });
+    apiMock.updateCategory.mockImplementation(async (id: string, data: any) => {
+      categoriesState = categoriesState.map((c) => (c.id === id ? { ...c, ...data } : c));
+    });
+    apiMock.deleteCategory.mockImplementation(async (id: string) => {
+      categoriesState = categoriesState.filter((c) => c.id !== id);
+    });
+
+    apiMock.addPackagingOption.mockImplementation(async (payload: any) => {
+      packagingState = packagingState.find((p) => p.id === payload.id) ? packagingState : [...packagingState, payload];
+    });
+    apiMock.updatePackagingOption.mockImplementation(async (id: string, data: any) => {
+      packagingState = packagingState.map((p) => (p.id === id ? { ...p, ...data } : p));
+    });
+    apiMock.deletePackagingOption.mockImplementation(async (id: string) => {
+      packagingState = packagingState.filter((p) => p.id !== id);
+    });
+
+    apiMock.addArticle.mockImplementation(async (payload: any) => {
+      const next = { ...payload, id: nextArticleId++ };
+      articlesState = [...articlesState, next];
+    });
+    apiMock.updateArticle.mockImplementation(async (id: number, data: any) => {
+      articlesState = articlesState.map((a) => (a.id === id ? { ...a, ...data } : a));
+    });
+    apiMock.deleteArticle.mockImplementation(async (id: number) => {
+      articlesState = articlesState.filter((a) => a.id !== id);
+    });
+
+    apiMock.addPromo.mockImplementation(async (payload: any) => {
+      const next = { ...payload, id: nextPromoId++, active: payload.active ?? true };
+      promosState = [...promosState, next];
+      return { id: next.id };
+    });
+    apiMock.updatePromo.mockImplementation(async (id: number, data: any) => {
+      promosState = promosState.map((p) => (p.id === id ? { ...p, ...data } : p));
+    });
+    apiMock.deletePromo.mockImplementation(async (id: number) => {
+      promosState = promosState.filter((p) => p.id !== id);
+    });
+
+    apiMock.addHeroImage.mockImplementation(async (payload: any) => {
+      const next = { ...payload, id: nextHeroImageId++ };
+      heroImagesState = [...heroImagesState, next];
+      return { id: next.id };
+    });
+    apiMock.updateHeroImage.mockImplementation(async (id: number, data: any) => {
+      heroImagesState = heroImagesState.map((h) => (h.id === id ? { ...h, ...data } : h));
+    });
+    apiMock.deleteHeroImage.mockImplementation(async (id: number) => {
+      heroImagesState = heroImagesState.filter((h) => h.id !== id);
+    });
+
+    apiMock.addPromoBanner.mockImplementation(async (payload: any) => {
+      const next = { ...payload, id: nextPromoBannerId++ };
+      promoBannersState = [...promoBannersState, next];
+      return { id: next.id };
+    });
+    apiMock.updatePromoBanner.mockImplementation(async (id: number, data: any) => {
+      promoBannersState = promoBannersState.map((b) => (b.id === id ? { ...b, ...data } : b));
+    });
+    apiMock.deletePromoBanner.mockImplementation(async (id: number) => {
+      promoBannersState = promoBannersState.filter((b) => b.id !== id);
+    });
+
+    apiMock.updateOrder.mockResolvedValue(undefined);
+    apiMock.updateFooter.mockResolvedValue(undefined);
+    apiMock.updateHeader.mockResolvedValue(undefined);
+    apiMock.updateHeroText.mockResolvedValue(undefined);
+    apiMock.updateFeatureBlocks.mockResolvedValue(undefined);
+    apiMock.updateAbout.mockResolvedValue(undefined);
+    apiMock.clearAdminData.mockResolvedValue(undefined);
   });
 
   it('handles add, update and delete for products, categories and packaging', async () => {
@@ -259,6 +362,7 @@ describe('admin crud', () => {
   });
 
   it('handles update-only admin sections and order update', async () => {
+    getTokenMock.mockReturnValue('test-token');
     localStorage.setItem('candy_orders', JSON.stringify([
       {
         id: 1,

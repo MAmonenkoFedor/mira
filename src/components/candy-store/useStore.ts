@@ -146,7 +146,7 @@ export function useStore() {
   const [heroText, setHeroText] = useState<HeroTextData>(() => normalizeHeroText(load('candy_hero_text', heroTextData)));
   const [featureBlocks, setFeatureBlocks] = useState<FeatureBlock[]>(() => load('candy_feature_blocks', defaultFeatureBlocks));
   const [about, setAbout] = useState<AboutData>(() => normalizeAbout(load('candy_about', aboutData)));
-  const [apiReady, setApiReady] = useState<boolean>(false);
+  const [apiReady, setApiReady] = useState<boolean>(true);
   const [promos, setPromos] = useState<Promo[]>([]);
 
   useEffect(() => save('candy_products', products), [products]);
@@ -213,9 +213,9 @@ export function useStore() {
         if (Array.isArray(packs)) {
           setPackagingOptions(packs as PackagingOption[]);
         }
-        setApiReady(true);
       } catch {
-        setApiReady(false);
+      } finally {
+        if (active) setApiReady(true);
       }
     })();
     return () => {
