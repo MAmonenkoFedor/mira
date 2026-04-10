@@ -4,7 +4,7 @@ import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, Package, FileText, Tag, Gif
 import { toast } from 'sonner';
 import { useStore, type Article, type Order } from '@/components/candy-store/useStore';
 import { api, resolveMediaUrl } from '@/lib/api';
-import { clearToken, setToken } from '@/lib/auth';
+import { clearToken, getTokenExpirationMs, setToken } from '@/lib/auth';
 import { badgeToneSoftClasses, badgeToneClasses, getProductBadgeIds } from '@/components/candy-store/data';
 import type { Product, Category, Promo, PromoScope, Badge, BadgeTone, PackagingOption, Review, FeatureBlock } from '@/components/candy-store/data';
 
@@ -304,6 +304,84 @@ function VideoUpload({ value, onChange }: { value: string; onChange: (v: string)
 export default function Admin() {
   const store = useStore();
   const [tab, setTab] = useState<Tab>('products');
+  const [sessionState, setSessionState] = useState<'checking' | 'active' | 'network_issue'>('checking');
+  const [sessionEmail, setSessionEmail] = useState('');
+  const [sessionNowMs, setSessionNowMs] = useState(() => Date.now());
+  const sessionLogoutHandledRef = useRef(false);
+
+  const forceLogoutBySession = useCallback((message: string) => {
+    if (sessionLogoutHandledRef.current) return;
+    sessionLogoutHandledRef.current = true;
+    clearToken();
+    toast.error(message);
+    window.location.reload();
+  }, []);
+
+  const checkAdminSession = useCallback(async (silent = true) => {
+    try {
+      const data = await api.getAdminSession();
+      setSessionState('active');
+      setSessionEmail(data?.email || '');
+    } catch (err) {
+      const status = getErrorStatus(err);
+      if (status === 401 || status === 403) {
+        forceLogoutBySession('Сессия завершена. Войдите в админку снова.');
+        return;
+      }
+      setSessionState('network_issue');
+      if (!silent) {
+        toast.error('Не удалось проверить состояние сессии');
+      }
+    }
+  }, [forceLogoutBySession]);
+
+  useEffect(() => {
+    void checkAdminSession(true);
+    const intervalId = window.setInterval(() => {
+      void checkAdminSession(true);
+    }, 300_000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void checkAdminSession(true);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [checkAdminSession]);
+
+  useEffect(() => {
+    const timerId = window.setInterval(() => {
+      setSessionNowMs(Date.now());
+    }, 30_000);
+    return () => {
+      window.clearInterval(timerId);
+    };
+  }, []);
+
+  const tokenExpiryLabel = useMemo(() => {
+    const expiresAt = getTokenExpirationMs();
+    if (!expiresAt) return 'до выхода: —';
+    const diff = expiresAt - sessionNowMs;
+    if (diff <= 0) return 'до выхода: истекла';
+    const totalMinutes = Math.floor(diff / 60_000);
+    const days = Math.floor(totalMinutes / (24 * 60));
+    const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+    const minutes = totalMinutes % 60;
+    if (days > 0) return `до выхода: ${days}д ${hours}ч`;
+    if (hours > 0) return `до выхода: ${hours}ч ${minutes}м`;
+    return `до выхода: ${minutes}м`;
+  }, [sessionNowMs]);
+
+  useEffect(() => {
+    const expiresAt = getTokenExpirationMs();
+    if (!expiresAt) return;
+    if (expiresAt <= sessionNowMs) {
+      forceLogoutBySession('Срок сессии истек. Войдите в админку снова.');
+    }
+  }, [forceLogoutBySession, sessionNowMs]);
 
   const tabs = useMemo(() => {
     const counts: Record<Tab, number> = {
@@ -389,6 +467,25 @@ export default function Admin() {
                 </div>
               </div>
               <div className="flex items-center gap-3">
+                <div className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-full border border-border bg-background/70">
+                  <span className={`h-2 w-2 rounded-full ${sessionState === 'active' ? 'bg-emerald-500' : sessionState === 'checking' ? 'bg-amber-500' : 'bg-rose-500'}`} />
+                  <span className="text-xs text-muted-foreground">
+                    {sessionState === 'active'
+                      ? `Вход выполнен${sessionEmail ? `: ${sessionEmail}` : ''} • ${tokenExpiryLabel}`
+                      : sessionState === 'checking'
+                        ? 'Проверка сессии...'
+                        : 'Проблема связи с сервером'}
+                  </span>
+                </div>
+                <button
+                  onClick={() => {
+                    clearToken();
+                    window.location.reload();
+                  }}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Выйти
+                </button>
                 <button
                   onClick={() => setTab('settings')}
                   className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"

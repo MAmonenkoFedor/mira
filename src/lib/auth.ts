@@ -14,6 +14,20 @@ function normalizeToken(raw: string | null): string | null {
   return token;
 }
 
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  const parts = token.split(".");
+  if (parts.length < 2) return null;
+  try {
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+    const json = atob(padded);
+    const payload = JSON.parse(json);
+    return payload && typeof payload === "object" ? payload : null;
+  } catch {
+    return null;
+  }
+}
+
 export function getToken(): string | null {
   try {
     return normalizeToken(localStorage.getItem(KEY));
@@ -32,6 +46,15 @@ export function clearToken() {
   try {
     localStorage.removeItem(KEY);
   } catch {}
+}
+
+export function getTokenExpirationMs(): number | null {
+  const token = getToken();
+  if (!token) return null;
+  const payload = decodeJwtPayload(token);
+  const exp = typeof payload?.exp === "number" ? payload.exp : null;
+  if (!exp) return null;
+  return exp * 1000;
 }
 
 export function getCustomerToken(): string | null {

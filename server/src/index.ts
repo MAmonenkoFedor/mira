@@ -2224,6 +2224,16 @@ app.post("/api/auth/logout-all-sessions", rateLimitMiddleware(10, 15 * 60 * 1000
   }
 }));
 
+app.get("/api/auth/session", async (req, res) => {
+  try {
+    const session = await resolveAdminSessionFromRequest(req);
+    if (!session) return res.status(401).json({ error: "unauthorized" });
+    res.json({ ok: true, email: session.email });
+  } catch {
+    res.status(401).json({ error: "unauthorized" });
+  }
+});
+
 app.get("/api/auth/admin-security", requireAuth(async (req, res) => {
   const session = await resolveAdminSessionFromRequest(req);
   if (!session) return res.status(401).json({ error: "unauthorized" });

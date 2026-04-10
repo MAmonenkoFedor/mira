@@ -62,6 +62,37 @@ function withAuth(init?: RequestInit): RequestInit {
   return { ...init, headers };
 }
 
+function isWriteMethod(method?: string) {
+  const normalized = (method || "GET").toUpperCase();
+  return normalized === "POST" || normalized === "PUT" || normalized === "PATCH" || normalized === "DELETE";
+}
+
+let adminSessionCheckPromise: Promise<void> | null = null;
+let lastAdminSessionOkAt = 0;
+
+async function ensureAdminSessionBeforeWrite(init?: RequestInit) {
+  if (!isWriteMethod(init?.method)) return;
+  if (!getToken()) return;
+  const now = Date.now();
+  if (now - lastAdminSessionOkAt < 15_000) return;
+  if (!adminSessionCheckPromise) {
+    adminSessionCheckPromise = (async () => {
+      await j<{ ok: boolean; email: string }>(
+        fetch(`${base}/api/auth/session`, withAuth())
+      );
+      lastAdminSessionOkAt = Date.now();
+    })().finally(() => {
+      adminSessionCheckPromise = null;
+    });
+  }
+  await adminSessionCheckPromise;
+}
+
+async function fetchWithAuth(url: string, init?: RequestInit) {
+  await ensureAdminSessionBeforeWrite(init);
+  return fetch(url, withAuth(init));
+}
+
 function withCustomerAuth(init?: RequestInit): RequestInit {
   const t = getCustomerToken();
   const headers = new Headers(init?.headers || {});
@@ -77,73 +108,73 @@ export const api = {
     return j(fetch(`${base}/api/packaging`));
   },
   async addPackagingOption(p: any) {
-    return j(fetch(`${base}/api/packaging`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+    return j(fetchWithAuth(`${base}/api/packaging`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) }));
   },
   async updatePackagingOption(id: string, p: any) {
-    return j(fetch(`${base}/api/packaging/${id}`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+    return j(fetchWithAuth(`${base}/api/packaging/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) }));
   },
   async deletePackagingOption(id: string) {
-    return j(fetch(`${base}/api/packaging/${id}`, withAuth({ method: "DELETE" })));
+    return j(fetchWithAuth(`${base}/api/packaging/${id}`, { method: "DELETE" }));
   },
   async getHeroImages() {
     return j(fetch(`${base}/api/hero-images`));
   },
   async addHeroImage(p: any) {
-    return j(fetch(`${base}/api/hero-images`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+    return j(fetchWithAuth(`${base}/api/hero-images`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) }));
   },
   async updateHeroImage(id: number, p: any) {
-    return j(fetch(`${base}/api/hero-images/${id}`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+    return j(fetchWithAuth(`${base}/api/hero-images/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) }));
   },
   async deleteHeroImage(id: number) {
-    return j(fetch(`${base}/api/hero-images/${id}`, withAuth({ method: "DELETE" })));
+    return j(fetchWithAuth(`${base}/api/hero-images/${id}`, { method: "DELETE" }));
   },
   async uploadHeroImage(dataUrl: string) {
-    return j(fetch(`${base}/api/hero-images/upload`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) })));
+    return j(fetchWithAuth(`${base}/api/hero-images/upload`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) }));
   },
   async getHeroText() {
     return j(fetch(`${base}/api/hero-text`));
   },
   async updateHeroText(p: any) {
-    return j(fetch(`${base}/api/hero-text`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+    return j(fetchWithAuth(`${base}/api/hero-text`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) }));
   },
   async getFeatureBlocks() {
     return j(fetch(`${base}/api/feature-blocks`));
   },
   async updateFeatureBlocks(p: any) {
-    return j(fetch(`${base}/api/feature-blocks`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+    return j(fetchWithAuth(`${base}/api/feature-blocks`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) }));
   },
   async getPromoBanners() {
     return j(fetch(`${base}/api/promo-banners`));
   },
   async addPromoBanner(p: any) {
-    return j(fetch(`${base}/api/promo-banners`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+    return j(fetchWithAuth(`${base}/api/promo-banners`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) }));
   },
   async updatePromoBanner(id: number, p: any) {
-    return j(fetch(`${base}/api/promo-banners/${id}`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+    return j(fetchWithAuth(`${base}/api/promo-banners/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) }));
   },
   async deletePromoBanner(id: number) {
-    return j(fetch(`${base}/api/promo-banners/${id}`, withAuth({ method: "DELETE" })));
+    return j(fetchWithAuth(`${base}/api/promo-banners/${id}`, { method: "DELETE" }));
   },
   async uploadPromoBanner(dataUrl: string) {
-    return j(fetch(`${base}/api/promo-banners/upload`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) })));
+    return j(fetchWithAuth(`${base}/api/promo-banners/upload`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) }));
   },
   async getPromos() {
     return j(fetch(`${base}/api/promos`));
   },
   async getLogisticsStatus() {
-    return j(fetch(`${base}/api/logistics/status`, withAuth()));
+    return j(fetchWithAuth(`${base}/api/logistics/status`));
   },
   async getIntegrationSettings() {
-    return j(fetch(`${base}/api/integrations/settings`, withAuth()));
+    return j(fetchWithAuth(`${base}/api/integrations/settings`));
   },
   async updateIntegrationSettings(p: any) {
-    return j(fetch(`${base}/api/integrations/settings`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+    return j(fetchWithAuth(`${base}/api/integrations/settings`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) }));
   },
   async testIntegration(p: any) {
-    return j(fetch(`${base}/api/integrations/test`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+    return j(fetchWithAuth(`${base}/api/integrations/test`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) }));
   },
   async testEmail(p: any) {
-    return j(fetch(`${base}/api/system/test-email`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+    return j(fetchWithAuth(`${base}/api/system/test-email`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) }));
   },
   async getPickupPoints(params: { provider?: "ozon" | "cdek" | "russianPost"; city?: string; mode?: "fake" | "real" }) {
     const search = new URLSearchParams();
@@ -172,61 +203,61 @@ export const api = {
     }
   },
   async getOrders() {
-    return j(fetch(`${base}/api/orders`, withAuth()));
+    return j(fetchWithAuth(`${base}/api/orders`));
   },
   async getFooter() {
     return j(fetch(`${base}/api/footer`));
   },
   async updateFooter(p: any) {
-    return j(fetch(`${base}/api/footer`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+    return j(fetchWithAuth(`${base}/api/footer`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) }));
   },
   async getHeader() {
     return j(fetch(`${base}/api/header`));
   },
   async updateHeader(p: any) {
-    return j(fetch(`${base}/api/header`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+    return j(fetchWithAuth(`${base}/api/header`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) }));
   },
   async getAbout() {
     return j(fetch(`${base}/api/about`));
   },
   async updateAbout(p: any) {
-    return j(fetch(`${base}/api/about`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+    return j(fetchWithAuth(`${base}/api/about`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) }));
   },
   async updateOrder(id: number, p: any) {
-    return j(fetch(`${base}/api/orders/${id}`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+    return j(fetchWithAuth(`${base}/api/orders/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) }));
   },
   async addPromo(p: any) {
-    return j(fetch(`${base}/api/promos`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+    return j(fetchWithAuth(`${base}/api/promos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) }));
   },
   async updatePromo(id: number, p: any) {
-    return j(fetch(`${base}/api/promos/${id}`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+    return j(fetchWithAuth(`${base}/api/promos/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) }));
   },
   async deletePromo(id: number) {
-    return j(fetch(`${base}/api/promos/${id}`, withAuth({ method: "DELETE" })));
+    return j(fetchWithAuth(`${base}/api/promos/${id}`, { method: "DELETE" }));
   },
   async addProduct(p: any) {
-    return j(fetch(`${base}/api/products`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+    return j(fetchWithAuth(`${base}/api/products`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) }));
   },
   async updateProduct(id: number, p: any) {
-    return j(fetch(`${base}/api/products/${id}`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+    return j(fetchWithAuth(`${base}/api/products/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) }));
   },
   async uploadProductImage(dataUrl: string) {
-    return j(fetch(`${base}/api/products/upload`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) })));
+    return j(fetchWithAuth(`${base}/api/products/upload`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) }));
   },
   async uploadProductVideo(dataUrl: string) {
-    return j(fetch(`${base}/api/products/upload-video`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) })));
+    return j(fetchWithAuth(`${base}/api/products/upload-video`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) }));
   },
   async uploadArticleImage(dataUrl: string) {
-    return j(fetch(`${base}/api/articles/upload`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) })));
+    return j(fetchWithAuth(`${base}/api/articles/upload`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) }));
   },
   async uploadArticleVideo(dataUrl: string) {
-    return j(fetch(`${base}/api/articles/upload-video`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) })));
+    return j(fetchWithAuth(`${base}/api/articles/upload-video`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) }));
   },
   async uploadReviewImage(dataUrl: string) {
-    return j(fetch(`${base}/api/reviews/upload`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) })));
+    return j(fetchWithAuth(`${base}/api/reviews/upload`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataUrl }) }));
   },
   async deleteProduct(id: number) {
-    return j(fetch(`${base}/api/products/${id}`, withAuth({ method: "DELETE" })));
+    return j(fetchWithAuth(`${base}/api/products/${id}`, { method: "DELETE" }));
   },
   async getProductReviews(productId: number) {
     return j(fetch(`${base}/api/products/${productId}/reviews`));
@@ -238,20 +269,20 @@ export const api = {
     return j(fetch(`${base}/api/categories`));
   },
   async addCategory(c: any) {
-    return j(fetch(`${base}/api/categories`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(c) })));
+    return j(fetchWithAuth(`${base}/api/categories`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(c) }));
   },
   async updateCategory(id: string, c: any) {
     try {
-      return await j(fetch(`${base}/api/categories/${encodeURIComponent(id)}`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(c) })));
+      return await j(fetchWithAuth(`${base}/api/categories/${encodeURIComponent(id)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(c) }));
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
       const status = Number(String(message).split("|")[0]);
       if (status !== 404 && status !== 502) throw err;
-      return j(fetch(`${base}/api/categories`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...c }) })));
+      return j(fetchWithAuth(`${base}/api/categories`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...c }) }));
     }
   },
   async deleteCategory(id: string) {
-    return j(fetch(`${base}/api/categories/${encodeURIComponent(id)}`, withAuth({ method: "DELETE" })));
+    return j(fetchWithAuth(`${base}/api/categories/${encodeURIComponent(id)}`, { method: "DELETE" }));
   },
   async getArticles() {
     return j(fetch(`${base}/api/articles`));
@@ -260,13 +291,13 @@ export const api = {
     return j(fetch(`${base}/api/articles/${slug}`));
   },
   async addArticle(a: any) {
-    return j(fetch(`${base}/api/articles`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(a) })));
+    return j(fetchWithAuth(`${base}/api/articles`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(a) }));
   },
   async updateArticle(id: number, a: any) {
-    return j(fetch(`${base}/api/articles/${id}`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(a) })));
+    return j(fetchWithAuth(`${base}/api/articles/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(a) }));
   },
   async deleteArticle(id: number) {
-    return j(fetch(`${base}/api/articles/${id}`, withAuth({ method: "DELETE" })));
+    return j(fetchWithAuth(`${base}/api/articles/${id}`, { method: "DELETE" }));
   },
   async createOrder(o: any) {
     return j(fetch(`${base}/api/orders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(o) }));
@@ -281,23 +312,28 @@ export const api = {
     return j(fetch(`${base}/api/customer/change-password`, withCustomerAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword, newPassword }) })));
   },
   async changePassword(currentPassword: string, newPassword: string) {
-    return j(fetch(`${base}/api/auth/change-password`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword, newPassword }) })));
+    return j(fetchWithAuth(`${base}/api/auth/change-password`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword, newPassword }) }));
   },
   async changeAdminEmail(currentPassword: string, newEmail: string) {
     return j<{ ok: boolean; email: string; token: string }>(
-      fetch(`${base}/api/auth/change-email`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword, newEmail }) }))
+      fetchWithAuth(`${base}/api/auth/change-email`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword, newEmail }) })
     );
   },
   async logoutAllAdminSessions(currentPassword: string) {
-    return j(fetch(`${base}/api/auth/logout-all-sessions`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword }) })));
+    return j(fetchWithAuth(`${base}/api/auth/logout-all-sessions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword }) }));
+  },
+  async getAdminSession() {
+    return j<{ ok: boolean; email: string }>(
+      fetchWithAuth(`${base}/api/auth/session`)
+    );
   },
   async getAdminSecurity() {
     return j<{ email: string; recentLogins: Array<{ id: number; email: string; ip: string | null; userAgent: string | null; success: boolean; createdAt: string }> }>(
-      fetch(`${base}/api/auth/admin-security`, withAuth())
+      fetchWithAuth(`${base}/api/auth/admin-security`)
     );
   },
   async clearAdminData() {
-    return j(fetch(`${base}/api/admin/clear-data`, withAuth({ method: "POST" })));
+    return j(fetchWithAuth(`${base}/api/admin/clear-data`, { method: "POST" }));
   },
   async requestPasswordReset(email: string) {
     return j(fetch(`${base}/api/auth/request-reset`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) }));
@@ -306,15 +342,15 @@ export const api = {
     return j(fetch(`${base}/api/auth/reset-password`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, token, password }) }));
   },
   async getReviews() {
-    return j(fetch(`${base}/api/reviews`, withAuth()));
+    return j(fetchWithAuth(`${base}/api/reviews`));
   },
   async addReview(data: any) {
-    return j(fetch(`${base}/api/reviews`, withAuth({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) })));
+    return j(fetchWithAuth(`${base}/api/reviews`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }));
   },
   async updateReview(id: number, data: any) {
-    return j(fetch(`${base}/api/reviews/${id}`, withAuth({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) })));
+    return j(fetchWithAuth(`${base}/api/reviews/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }));
   },
   async deleteReview(id: number) {
-    return j(fetch(`${base}/api/reviews/${id}`, withAuth({ method: "DELETE" })));
+    return j(fetchWithAuth(`${base}/api/reviews/${id}`, { method: "DELETE" }));
   },
 };
