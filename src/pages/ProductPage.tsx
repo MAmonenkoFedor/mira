@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Heart, Minus, Plus, Tag, Star } from 'lucide-react';
+import { Heart, Minus, Plus, Tag, Star, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import Header from '@/components/candy-store/Header';
 import Footer from '@/components/candy-store/Footer';
 import { useCart } from '@/components/candy-store/useCart';
@@ -23,6 +23,81 @@ function Stars({ count }: { count: number }) {
           className={i < count ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/30'}
         />
       ))}
+    </div>
+  );
+}
+
+function getReviewImages(review: Review): string[] {
+  const fromArray = Array.isArray(review.images) ? review.images : [];
+  const all = [...fromArray, review.image || ''].map(v => String(v).trim()).filter(Boolean);
+  return Array.from(new Set(all)).slice(0, 7);
+}
+
+function ReviewImageCarousel({
+  images,
+  onOpen,
+}: {
+  images: string[];
+  onOpen: (index: number) => void;
+}) {
+  const [index, setIndex] = useState(0);
+  const total = images.length;
+  if (!total) return null;
+  const current = images[Math.min(index, total - 1)];
+  const canSlide = total > 1;
+  return (
+    <div className="grid gap-2 max-w-xs md:max-w-sm">
+      <div className="relative">
+        <button type="button" onClick={() => onOpen(index)} className="block w-full">
+          <img
+            src={resolveMediaUrl(current)}
+            alt=""
+            className="w-full h-32 md:h-36 rounded-2xl object-cover border border-border/40"
+            loading="lazy"
+          />
+        </button>
+        {canSlide && (
+          <>
+            <button
+              type="button"
+              onClick={() => setIndex((prev) => (prev - 1 + total) % total)}
+              className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center"
+              aria-label="Предыдущее фото"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setIndex((prev) => (prev + 1) % total)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center"
+              aria-label="Следующее фото"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </>
+        )}
+      </div>
+      {canSlide && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+          {images.map((img, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => setIndex(i)}
+              className={`shrink-0 rounded-xl overflow-hidden border transition-all ${i === index ? 'border-primary ring-1 ring-primary/40' : 'border-border/40'}`}
+              aria-label={`Открыть фото ${i + 1}`}
+            >
+              <img
+                src={resolveMediaUrl(img)}
+                alt=""
+                className="w-12 h-12 object-cover"
+                loading="lazy"
+              />
+            </button>
+          ))}
+          <span className="ml-1 text-[11px] text-muted-foreground whitespace-nowrap">{index + 1}/{total}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -102,6 +177,7 @@ export default function ProductPage() {
   const [reviewForm, setReviewForm] = useState({ name: '', rating: 5, text: '' });
   const [canReview, setCanReview] = useState(false);
   const [reviewEligibilityReady, setReviewEligibilityReady] = useState(false);
+  const [reviewLightbox, setReviewLightbox] = useState<{ images: string[]; index: number } | null>(null);
 
   useEffect(() => {
     if (!product?.id) return;
@@ -527,14 +603,19 @@ export default function ProductPage() {
                   <Stars count={r.rating} />
                 </div>
                 <div className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">{r.text}</div>
-                {r.image && (
-                  <img
-                    src={resolveMediaUrl(r.image)}
-                    alt=""
-                    className="w-full max-w-sm h-44 rounded-2xl object-cover border border-border/40"
-                    loading="lazy"
-                  />
+                {r.companyReply && (
+                  <div className="rounded-2xl border border-primary/20 bg-primary/5 p-3">
+                    <div className="text-[11px] font-medium text-primary mb-1">Ответ компании</div>
+                    <div className="text-sm text-foreground/85 whitespace-pre-wrap">{r.companyReply}</div>
+                    {r.companyReplyAt && (
+                      <div className="text-[11px] text-muted-foreground mt-1">{formatReviewDate(r.companyReplyAt) || ''}</div>
+                    )}
+                  </div>
                 )}
+                <ReviewImageCarousel
+                  images={getReviewImages(r)}
+                  onOpen={(index) => setReviewLightbox({ images: getReviewImages(r), index })}
+                />
               </div>
             ))}
             {reviews.length === 0 && (
@@ -631,6 +712,44 @@ export default function ProductPage() {
       </section>
 
       <Footer />
+
+      {reviewLightbox && (
+        <div className="fixed inset-0 z-[120] bg-black/85 p-4 flex items-center justify-center">
+          <button
+            type="button"
+            onClick={() => setReviewLightbox(null)}
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/15 text-white flex items-center justify-center"
+            aria-label="Закрыть просмотр"
+          >
+            <X size={18} />
+          </button>
+          {reviewLightbox.images.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setReviewLightbox(prev => prev ? ({ ...prev, index: (prev.index - 1 + prev.images.length) % prev.images.length }) : prev)}
+              className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/15 text-white flex items-center justify-center"
+              aria-label="Предыдущее фото"
+            >
+              <ChevronLeft size={20} />
+            </button>
+          )}
+          <img
+            src={resolveMediaUrl(reviewLightbox.images[reviewLightbox.index] || '')}
+            alt=""
+            className="max-h-[85vh] max-w-[95vw] rounded-2xl object-contain"
+          />
+          {reviewLightbox.images.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setReviewLightbox(prev => prev ? ({ ...prev, index: (prev.index + 1) % prev.images.length }) : prev)}
+              className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/15 text-white flex items-center justify-center"
+              aria-label="Следующее фото"
+            >
+              <ChevronRight size={20} />
+            </button>
+          )}
+        </div>
+      )}
 
       <Sheet open={detailsOpen} onOpenChange={setDetailsOpen}>
         <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">

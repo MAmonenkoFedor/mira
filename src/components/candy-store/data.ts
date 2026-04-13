@@ -92,6 +92,9 @@ export interface Review {
   rating: number;
   text: string;
   image?: string;
+  images?: string[];
+  companyReply?: string;
+  companyReplyAt?: string;
   approved: boolean;
   createdAt?: string;
   productName?: string;

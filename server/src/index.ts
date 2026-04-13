@@ -662,7 +662,8 @@ function requireAuth(handler: express.RequestHandler): express.RequestHandler {
     try {
       const admin = await resolveAdminSessionFromRequest(req);
       if (!admin) return res.status(401).json({ error: "unauthorized" });
-      return handler(req, res, next);
+      await Promise.resolve(handler(req, res, next));
+      return;
     } catch {
       return res.status(401).json({ error: "unauthorized" });
     }
@@ -674,7 +675,8 @@ function requireCustomerAuth(handler: express.RequestHandler): express.RequestHa
     try {
       const customerId = await resolveCustomerIdFromRequest(req);
       if (!customerId) return res.status(401).json({ error: "unauthorized" });
-      return handler(req, res, next);
+      await Promise.resolve(handler(req, res, next));
+      return;
     } catch {
       return res.status(401).json({ error: "unauthorized" });
     }
@@ -1122,7 +1124,7 @@ app.post("/api/categories", requireAuth(async (req, res) => {
 }));
 
 app.put("/api/categories/:id", requireAuth(async (req, res) => {
-  const data = CategorySchema.partial({ id: true }).parse(req.body);
+  const data = CategorySchema.omit({ id: true }).partial().parse(req.body);
   const id = req.params.id;
   let result;
   if (hasCategoryOrderColumn) {
@@ -1372,6 +1374,7 @@ const ReviewCreateSchema = z.object({
   rating: z.number().int().min(1).max(5),
   text: z.string().min(1),
   image: z.string().optional(),
+  images: z.array(z.string().min(1)).max(7).optional(),
 });
 const ReviewAdminSchema = z.object({
   productId: z.number().int(),
@@ -1379,6 +1382,9 @@ const ReviewAdminSchema = z.object({
   rating: z.number().int().min(1).max(5),
   text: z.string().min(1),
   image: z.string().optional(),
+  images: z.array(z.string().min(1)).max(7).optional(),
+  companyReply: z.string().optional(),
+  companyReplyAt: z.string().optional(),
   approved: z.boolean().optional(),
   createdAt: z.string().optional(),
 });
@@ -1388,6 +1394,9 @@ const ReviewUpdateSchema = z.object({
   rating: z.number().int().min(1).max(5).optional(),
   text: z.string().min(1).optional(),
   image: z.string().optional().nullable(),
+  images: z.array(z.string().min(1)).max(7).optional().nullable(),
+  companyReply: z.string().optional().nullable(),
+  companyReplyAt: z.string().optional().nullable(),
   approved: z.boolean().optional(),
   createdAt: z.string().optional(),
 });
@@ -1402,16 +1411,19 @@ app.get("/api/products/:id/reviews", async (req, res) => {
   const productId = Number(req.params.id);
   if (!Number.isFinite(productId)) return res.json([]);
   const { rows } = await pool.query(
-    "select id,product_id,author_name,rating,text,image,created_at from reviews where product_id=$1 and approved=true order by created_at desc, id desc",
+    "select id,product_id,author_name,rating,text,image,images,company_reply,company_reply_at,created_at from reviews where product_id=$1 and approved=true order by created_at desc, id desc",
     [productId]
   );
   res.json(rows.map((r: any) => ({
+    ...(Array.isArray(r.images) && r.images.length ? { images: r.images } : (r.image ? { images: [r.image] } : {})),
     id: r.id,
     productId: r.product_id,
     authorName: r.author_name,
     rating: r.rating,
     text: r.text,
     image: r.image ?? undefined,
+    companyReply: r.company_reply ?? undefined,
+    companyReplyAt: r.company_reply_at ?? undefined,
     createdAt: r.created_at,
     approved: true,
   })));
@@ -1435,18 +1447,21 @@ app.post("/api/products/:id/reviews", requireCustomerAuth(async (req, res) => {
   );
   if (!hasPurchase[0]) return res.status(403).json({ error: "not_purchased" });
   const data = ReviewCreateSchema.parse(req.body);
+  const images = (Array.isArray(data.images) ? data.images : []).slice(0, 7);
+  const image = images[0] || data.image || null;
   await pool.query(
-    "insert into reviews(product_id,author_name,rating,text,image,approved) values($1,$2,$3,$4,$5,false)",
-    [productId, data.authorName, data.rating, data.text, data.image ?? null]
+    "insert into reviews(product_id,author_name,rating,text,image,images,approved) values($1,$2,$3,$4,$5,$6,false)",
+    [productId, data.authorName, data.rating, data.text, image, images.length ? images : null]
   );
   res.status(201).json({ ok: true });
 }));
 
 app.get("/api/reviews", requireAuth(async (_req, res) => {
   const { rows } = await pool.query(
-    "select r.id,r.product_id,p.name as product_name,r.author_name,r.rating,r.text,r.image,r.approved,r.created_at from reviews r left join products p on p.id=r.product_id order by r.created_at desc, r.id desc"
+    "select r.id,r.product_id,p.name as product_name,r.author_name,r.rating,r.text,r.image,r.images,r.company_reply,r.company_reply_at,r.approved,r.created_at from reviews r left join products p on p.id=r.product_id order by r.created_at desc, r.id desc"
   );
   res.json(rows.map((r: any) => ({
+    ...(Array.isArray(r.images) && r.images.length ? { images: r.images } : (r.image ? { images: [r.image] } : {})),
     id: r.id,
     productId: r.product_id,
     productName: r.product_name ?? undefined,
@@ -1454,6 +1469,8 @@ app.get("/api/reviews", requireAuth(async (_req, res) => {
     rating: r.rating,
     text: r.text,
     image: r.image ?? undefined,
+    companyReply: r.company_reply ?? undefined,
+    companyReplyAt: r.company_reply_at ?? undefined,
     approved: r.approved,
     createdAt: r.created_at,
   })));
@@ -1462,10 +1479,14 @@ app.get("/api/reviews", requireAuth(async (_req, res) => {
 app.post("/api/reviews", requireAuth(async (req, res) => {
   const data = ReviewAdminSchema.parse(req.body);
   const createdAt = toDate(data.createdAt);
+  const companyReplyAt = toDate(data.companyReplyAt);
   const approved = data.approved ?? true;
+  const images = (Array.isArray(data.images) ? data.images : []).slice(0, 7);
+  const image = images[0] || data.image || null;
+  const companyReply = data.companyReply?.trim() ? data.companyReply.trim() : null;
   const { rows } = await pool.query(
-    "insert into reviews(product_id,author_name,rating,text,image,approved,created_at) values($1,$2,$3,$4,$5,$6,coalesce($7,now())) returning id",
-    [data.productId, data.authorName, data.rating, data.text, data.image ?? null, approved, createdAt]
+    "insert into reviews(product_id,author_name,rating,text,image,images,company_reply,company_reply_at,approved,created_at) values($1,$2,$3,$4,$5,$6,$7,$8,$9,coalesce($10,now())) returning id",
+    [data.productId, data.authorName, data.rating, data.text, image, images.length ? images : null, companyReply, companyReply ? (companyReplyAt ?? new Date()) : null, approved, createdAt]
   );
   res.status(201).json({ id: rows[0].id });
 }));
@@ -1475,10 +1496,21 @@ app.put("/api/reviews/:id", requireAuth(async (req, res) => {
   const data = ReviewUpdateSchema.parse(req.body);
   const hasCreatedAt = Object.prototype.hasOwnProperty.call(data, "createdAt");
   const hasImage = Object.prototype.hasOwnProperty.call(data, "image");
+  const hasImages = Object.prototype.hasOwnProperty.call(data, "images");
+  const hasCompanyReply = Object.prototype.hasOwnProperty.call(data, "companyReply");
+  const hasCompanyReplyAt = Object.prototype.hasOwnProperty.call(data, "companyReplyAt");
+  const nextImages = hasImages ? (data.images ? data.images.slice(0, 7) : null) : null;
+  const nextImage = hasImage
+    ? (data.image ?? null)
+    : (hasImages ? (nextImages?.[0] ?? null) : null);
   const createdAt = hasCreatedAt ? toDate(data.createdAt) : null;
+  const companyReply = hasCompanyReply ? (data.companyReply?.trim() || null) : null;
+  const companyReplyAt = hasCompanyReplyAt
+    ? toDate(data.companyReplyAt ?? undefined)
+    : (hasCompanyReply ? (companyReply ? new Date() : null) : null);
   await pool.query(
-    "update reviews set product_id=coalesce($2,product_id), author_name=coalesce($3,author_name), rating=coalesce($4,rating), text=coalesce($5,text), image=case when $6 then $7 else image end, approved=coalesce($8,approved), created_at=case when $9 then $10 else created_at end where id=$1",
-    [id, data.productId ?? null, data.authorName ?? null, data.rating ?? null, data.text ?? null, hasImage, data.image ?? null, data.approved ?? null, hasCreatedAt, createdAt]
+    "update reviews set product_id=coalesce($2,product_id), author_name=coalesce($3,author_name), rating=coalesce($4,rating), text=coalesce($5,text), image=case when $6 then $7 when $11 then coalesce($12[1], null) else image end, approved=coalesce($8,approved), created_at=case when $9 then $10 else created_at end, images=case when $11 then $12 else images end, company_reply=case when $13 then $14 else company_reply end, company_reply_at=case when $15 then $16 when $13 then case when $14 is null then null else coalesce(company_reply_at, now()) end else company_reply_at end where id=$1",
+    [id, data.productId ?? null, data.authorName ?? null, data.rating ?? null, data.text ?? null, hasImage, nextImage, data.approved ?? null, hasCreatedAt, createdAt, hasImages, nextImages, hasCompanyReply, companyReply, hasCompanyReplyAt, companyReplyAt]
   );
   res.json({ ok: true });
 }));

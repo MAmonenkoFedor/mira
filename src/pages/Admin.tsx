@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, Package, FileText, Tag, Gift, Upload, X, Percent, Image as ImageIcon, ArrowUp, ArrowDown, BadgeCheck, ClipboardList, Star, Heart, Menu, KeyRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { useStore, type Article, type Order } from '@/components/candy-store/useStore';
-import { api, resolveMediaUrl } from '@/lib/api';
+import { ADMIN_SESSION_EXPIRED_EVENT, api, resolveMediaUrl } from '@/lib/api';
 import { clearToken, getTokenExpirationMs, setToken } from '@/lib/auth';
 import { badgeToneSoftClasses, badgeToneClasses, getProductBadgeIds } from '@/components/candy-store/data';
 import type { Product, Category, Promo, PromoScope, Badge, BadgeTone, PackagingOption, Review, FeatureBlock } from '@/components/candy-store/data';
@@ -307,14 +307,17 @@ export default function Admin() {
   const [sessionState, setSessionState] = useState<'checking' | 'active' | 'network_issue'>('checking');
   const [sessionEmail, setSessionEmail] = useState('');
   const [sessionNowMs, setSessionNowMs] = useState(() => Date.now());
+  const [sessionExpiredModalMessage, setSessionExpiredModalMessage] = useState('');
+  const [sessionLocked, setSessionLocked] = useState(false);
   const sessionLogoutHandledRef = useRef(false);
 
   const forceLogoutBySession = useCallback((message: string) => {
     if (sessionLogoutHandledRef.current) return;
     sessionLogoutHandledRef.current = true;
+    setSessionLocked(true);
+    setSessionExpiredModalMessage(message);
     clearToken();
-    toast.error(message);
-    window.location.reload();
+    setSessionState('checking');
   }, []);
 
   const checkAdminSession = useCallback(async (silent = true) => {
@@ -351,6 +354,30 @@ export default function Admin() {
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [checkAdminSession]);
+
+  useEffect(() => {
+    const onSessionExpired = (event: Event) => {
+      const detail = (event as CustomEvent<{ status?: number; detail?: string }>).detail;
+      const message = detail?.detail
+        ? `Сессия завершена: ${detail.detail}. Войдите в админку снова.`
+        : 'Сессия завершена. Войдите в админку снова.';
+      forceLogoutBySession(message);
+    };
+    window.addEventListener(ADMIN_SESSION_EXPIRED_EVENT, onSessionExpired);
+    return () => {
+      window.removeEventListener(ADMIN_SESSION_EXPIRED_EVENT, onSessionExpired);
+    };
+  }, [forceLogoutBySession]);
+
+  useEffect(() => {
+    if (!sessionLocked) return;
+    const timerId = window.setTimeout(() => {
+      window.location.assign('/admin');
+    }, 1200);
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [sessionLocked]);
 
   useEffect(() => {
     const timerId = window.setInterval(() => {
@@ -420,7 +447,7 @@ export default function Admin() {
 
   return (
     <div className="min-h-screen bg-muted/30">
-      <div className="flex min-h-screen">
+      <div className={`flex min-h-screen ${sessionLocked ? 'pointer-events-none select-none opacity-60' : ''}`}>
         <aside className="hidden md:flex md:flex-col w-64 shrink-0 sticky top-0 h-screen bg-card/95 backdrop-blur-md border-r border-border shadow-sm">
           <div className="h-14 flex items-center gap-2 px-4 border-b border-border">
             <Link to="/" title="Вернуться на сайт" aria-label="Вернуться на сайт" className="p-2 -ml-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-primary transition-colors">
@@ -553,6 +580,27 @@ export default function Admin() {
           </main>
         </div>
       </div>
+      {sessionLocked && (
+        <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-[1px] flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-xl pointer-events-auto">
+            <div className="font-display text-lg font-semibold text-foreground mb-2">Сессия истекла</div>
+            <p className="text-sm text-muted-foreground">
+              {sessionExpiredModalMessage || 'Срок действия сессии закончился. Для продолжения войдите в админку снова.'}
+            </p>
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.assign('/admin');
+                }}
+                className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+              >
+                Перейти ко входу
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -3130,14 +3178,19 @@ function CategoryForm({ category, draft, categories, colorOptions, onSave, onCan
 }
 
 function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
+  const createGalleryInputRef = useRef<HTMLInputElement>(null);
+  const editGalleryInputRef = useRef<HTMLInputElement>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(false);
-  const [filter, setFilter] = useState<'pending' | 'approved' | 'all'>('pending');
+  const [filter, setFilter] = useState<'pending' | 'approved' | 'all'>('all');
   const [busyId, setBusyId] = useState<number | null>(null);
   const [editingPhotoId, setEditingPhotoId] = useState<number | null>(null);
-  const [editingPhotoValue, setEditingPhotoValue] = useState('');
+  const [editingPhotoValues, setEditingPhotoValues] = useState<string[]>([]);
   const [editingReviewId, setEditingReviewId] = useState<number | null>(null);
-  const [editingReviewForm, setEditingReviewForm] = useState({ authorName: '', rating: 5, text: '' });
+  const [editingReviewForm, setEditingReviewForm] = useState({ authorName: '', rating: 5, text: '', companyReply: '' });
+  const [replyModalReview, setReplyModalReview] = useState<Review | null>(null);
+  const [replyModalValue, setReplyModalValue] = useState('');
+  const [replyBusy, setReplyBusy] = useState(false);
   const productsSorted = useMemo(() => {
     return [...store.products].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
   }, [store.products]);
@@ -3149,11 +3202,17 @@ function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
     authorName: '',
     rating: 5,
     text: '',
-    image: '',
+    images: [] as string[],
     approved: true,
     createdAt: '',
   });
+  const maxReviewImages = 7;
   const setFormField = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm(f => ({ ...f, [k]: v }));
+  const getReviewImages = useCallback((review: Review) => {
+    const fromArray = Array.isArray(review.images) ? review.images : [];
+    const all = [...fromArray, review.image || ''].map(v => String(v).trim()).filter(Boolean);
+    return Array.from(new Set(all)).slice(0, maxReviewImages);
+  }, []);
 
   useEffect(() => {
     if (!form.productId && productsSorted.length) {
@@ -3190,6 +3249,46 @@ function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
     return reviews.filter(r => !r.approved);
   }, [filter, reviews]);
 
+  const addCreateImages = async (files: FileList | null) => {
+    const result = await appendValidatedImages({
+      files,
+      currentImages: form.images,
+      maxImages: maxReviewImages,
+      maxImagesError: 'Макс. 7 фото',
+    });
+    if (result) setFormField('images', result);
+  };
+
+  const addEditImages = useCallback(async (files: FileList | null) => {
+    const result = await appendValidatedImages({
+      files,
+      currentImages: editingPhotoValues,
+      maxImages: maxReviewImages,
+      maxImagesError: 'Макс. 7 фото',
+    });
+    if (result) setEditingPhotoValues(result);
+  }, [editingPhotoValues]);
+
+  const uploadReviewImages = useCallback(async (values: string[]) => {
+    const next: string[] = [];
+    for (const value of values) {
+      const normalized = value.trim();
+      if (!normalized) continue;
+      if (normalized.startsWith('data:image/')) {
+        const uploaded = await api.uploadReviewImage(normalized) as { url?: unknown };
+        if (typeof uploaded?.url === 'string' && uploaded.url.trim()) next.push(uploaded.url);
+      } else {
+        next.push(normalized);
+      }
+    }
+    return next.slice(0, maxReviewImages);
+  }, []);
+
+  const openReplyModal = useCallback((review: Review) => {
+    setReplyModalReview(review);
+    setReplyModalValue(review.companyReply || '');
+  }, []);
+
   return (
     <div>
       <form
@@ -3198,23 +3297,20 @@ function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
           if (!form.productId) { toast.error('Выберите товар'); return; }
           if (!form.authorName.trim()) { toast.error('Введите имя'); return; }
           if (!form.text.trim()) { toast.error('Введите текст'); return; }
+          if (form.images.length > maxReviewImages) { toast.error('Макс. 7 фото'); return; }
           try {
-            let image = form.image.trim();
-            if (image.startsWith('data:image/')) {
-              const uploaded = await api.uploadReviewImage(image) as { url?: unknown };
-              image = typeof uploaded?.url === 'string' ? uploaded.url : '';
-            }
+            const images = await uploadReviewImages(form.images);
             await api.addReview({
               productId: form.productId,
               authorName: form.authorName.trim(),
               rating: Number(form.rating) || 5,
               text: form.text.trim(),
-              ...(image ? { image } : {}),
+              ...(images.length ? { image: images[0], images } : {}),
               approved: Boolean(form.approved),
               ...(form.createdAt ? { createdAt: form.createdAt } : {}),
             });
             toast.success('Отзыв добавлен');
-            setForm(f => ({ ...f, authorName: '', rating: 5, text: '', image: '', approved: true, createdAt: '' }));
+            setForm(f => ({ ...f, authorName: '', rating: 5, text: '', images: [], approved: true, createdAt: '' }));
             loadReviews();
           } catch (err) {
             const code = err instanceof Error ? err.message : '';
@@ -3263,7 +3359,42 @@ function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
           />
         </div>
         <div className="sm:col-span-2">
-          <ImageUpload value={form.image} onChange={v => setFormField('image', v)} />
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Фото отзыва (до 7)</label>
+          <div className="grid gap-2">
+            <div className="flex flex-wrap gap-2">
+              {form.images.map((u, i) => (
+                <div key={i} className="relative">
+                  <img src={resolveMediaUrl(u)} alt="" className="w-20 h-20 object-cover rounded-xl border" />
+                  <button
+                    type="button"
+                    onClick={() => setFormField('images', form.images.filter((_, idx) => idx !== i))}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => createGalleryInputRef.current?.click()}
+                className="px-3 py-2 rounded-xl border border-border text-xs text-muted-foreground hover:bg-muted transition-colors flex items-center gap-2"
+              >
+                <Upload size={14} />
+                Добавить фото
+              </button>
+              <span className="text-[11px] text-muted-foreground">Добавлено: {form.images.length}/{maxReviewImages}</span>
+              <input
+                ref={createGalleryInputRef}
+                type="file"
+                multiple
+                accept="image/*"
+                className="hidden"
+                onChange={e => { addCreateImages(e.target.files); e.currentTarget.value = ''; }}
+              />
+            </div>
+          </div>
         </div>
         <div>
           <label className="text-xs font-medium text-muted-foreground mb-1 block">Дата</label>
@@ -3330,8 +3461,17 @@ function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
                 </div>
               </div>
               <div className="text-sm text-foreground/80 whitespace-pre-wrap">{r.text}</div>
+              {r.companyReply && (
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+                  <div className="text-[11px] font-medium text-primary mb-1">Ответ компании</div>
+                  <div className="text-sm text-foreground/85 whitespace-pre-wrap">{r.companyReply}</div>
+                </div>
+              )}
               {editingReviewId === r.id && (
                 <div className="grid gap-2">
+                  <div className="text-[11px] text-muted-foreground">
+                    Здесь можно исправить текст отзыва и оставить/обновить официальный ответ компании.
+                  </div>
                   <div className="grid sm:grid-cols-2 gap-2">
                     <input
                       value={editingReviewForm.authorName}
@@ -3356,6 +3496,13 @@ function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
                     className="admin-input resize-none"
                     placeholder="Текст отзыва"
                   />
+                  <textarea
+                    value={editingReviewForm.companyReply}
+                    onChange={e => setEditingReviewForm(prev => ({ ...prev, companyReply: e.target.value }))}
+                    rows={3}
+                    className="admin-input resize-none"
+                    placeholder="Ответ компании (необязательно)"
+                  />
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -3369,6 +3516,7 @@ function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
                             authorName: editingReviewForm.authorName.trim(),
                             rating: Number(editingReviewForm.rating) || 5,
                             text: editingReviewForm.text.trim(),
+                            companyReply: editingReviewForm.companyReply.trim() || null,
                           });
                           setReviews(prev => prev.map(x => (
                             x.id === r.id
@@ -3377,6 +3525,7 @@ function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
                                 authorName: editingReviewForm.authorName.trim(),
                                 rating: Number(editingReviewForm.rating) || 5,
                                 text: editingReviewForm.text.trim(),
+                                companyReply: editingReviewForm.companyReply.trim() || undefined,
                               }
                               : x
                           )));
@@ -3405,17 +3554,54 @@ function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
                   </div>
                 </div>
               )}
-              {r.image && (
-                <img
-                  src={resolveMediaUrl(r.image)}
-                  alt=""
-                  className="w-full max-w-sm h-40 rounded-xl object-cover border border-border/40"
-                  loading="lazy"
-                />
+              {getReviewImages(r).length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {getReviewImages(r).map((img, i) => (
+                    <img
+                      key={`${r.id}-${i}`}
+                      src={resolveMediaUrl(img)}
+                      alt=""
+                      className="w-20 h-20 rounded-xl object-cover border border-border/40"
+                      loading="lazy"
+                    />
+                  ))}
+                </div>
               )}
               {editingPhotoId === r.id && (
                 <div className="grid gap-2 max-w-sm">
-                  <ImageUpload value={editingPhotoValue} onChange={setEditingPhotoValue} />
+                  <div className="flex flex-wrap gap-2">
+                    {editingPhotoValues.map((u, i) => (
+                      <div key={i} className="relative">
+                        <img src={resolveMediaUrl(u)} alt="" className="w-20 h-20 object-cover rounded-xl border" />
+                        <button
+                          type="button"
+                          onClick={() => setEditingPhotoValues(editingPhotoValues.filter((_, idx) => idx !== i))}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => editGalleryInputRef.current?.click()}
+                      className="px-3 py-2 rounded-xl border border-border text-xs text-muted-foreground hover:bg-muted transition-colors flex items-center gap-2"
+                    >
+                      <Upload size={14} />
+                      Добавить фото
+                    </button>
+                    <span className="text-[11px] text-muted-foreground">Добавлено: {editingPhotoValues.length}/{maxReviewImages}</span>
+                    <input
+                      ref={editGalleryInputRef}
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      className="hidden"
+                      onChange={e => { addEditImages(e.target.files); e.currentTarget.value = ''; }}
+                    />
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -3423,17 +3609,13 @@ function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
                       onClick={async () => {
                         try {
                           setBusyId(r.id);
-                          let nextImage = editingPhotoValue.trim();
-                          if (nextImage.startsWith('data:image/')) {
-                            const uploaded = await api.uploadReviewImage(nextImage) as { url?: unknown };
-                            nextImage = typeof uploaded?.url === 'string' ? uploaded.url : '';
-                          }
-                          const payload = nextImage ? { image: nextImage } : { image: null };
+                          const nextImages = await uploadReviewImages(editingPhotoValues);
+                          const payload = nextImages.length ? { image: nextImages[0], images: nextImages } : { image: null, images: null };
                           await api.updateReview(r.id, payload);
-                          setReviews(prev => prev.map(x => x.id === r.id ? { ...x, image: nextImage || undefined } : x));
+                          setReviews(prev => prev.map(x => x.id === r.id ? { ...x, image: nextImages[0], images: nextImages.length ? nextImages : undefined } : x));
                           setEditingPhotoId(null);
-                          setEditingPhotoValue('');
-                          toast.success(nextImage ? 'Фото обновлено' : 'Фото удалено');
+                          setEditingPhotoValues([]);
+                          toast.success(nextImages.length ? 'Фото обновлены' : 'Фото удалены');
                         } catch (err) {
                           const code = err instanceof Error ? err.message : '';
                           if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
@@ -3449,7 +3631,7 @@ function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
                     <button
                       type="button"
                       disabled={busyId === r.id}
-                      onClick={() => setEditingPhotoValue('')}
+                      onClick={() => setEditingPhotoValues([])}
                       className="px-3 py-2 rounded-xl text-xs border border-border text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
                     >
                       Удалить фото
@@ -3459,7 +3641,7 @@ function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
                       disabled={busyId === r.id}
                       onClick={() => {
                         setEditingPhotoId(null);
-                        setEditingPhotoValue('');
+                        setEditingPhotoValues([]);
                       }}
                       className="px-3 py-2 rounded-xl text-xs border border-border text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
                     >
@@ -3475,28 +3657,39 @@ function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
                   onClick={() => {
                     setEditingReviewId(null);
                     setEditingPhotoId(r.id);
-                    setEditingPhotoValue(r.image || '');
+                    setEditingPhotoValues(getReviewImages(r));
                   }}
                   className="px-3 py-2 rounded-xl text-xs border border-border text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
                 >
-                  {r.image ? 'Редактировать фото' : 'Добавить фото'}
+                  {getReviewImages(r).length ? 'Редактировать фото' : 'Добавить фото'}
                 </button>
                 <button
                   type="button"
                   disabled={busyId === r.id}
                   onClick={() => {
                     setEditingPhotoId(null);
-                    setEditingPhotoValue('');
+                    setEditingPhotoValues([]);
                     setEditingReviewId(r.id);
                     setEditingReviewForm({
                       authorName: r.authorName || '',
                       rating: Number(r.rating) || 5,
                       text: r.text || '',
+                      companyReply: r.companyReply || '',
                     });
                   }}
                   className="px-3 py-2 rounded-xl text-xs border border-border text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
                 >
                   Редактировать отзыв
+                </button>
+                <button
+                  type="button"
+                  disabled={busyId === r.id}
+                  onClick={() => {
+                    openReplyModal(r);
+                  }}
+                  className="px-3 py-2 rounded-xl text-xs border border-border text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                >
+                  {r.companyReply ? 'Изменить ответ' : 'Ответить от компании'}
                 </button>
                 <button
                   type="button"
@@ -3542,6 +3735,83 @@ function ReviewsTab({ store }: { store: ReturnType<typeof useStore> }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+      {replyModalReview && (
+        <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-[1px] flex items-center justify-center p-4">
+          <div className="w-full max-w-xl rounded-2xl border border-border bg-card p-5 shadow-xl">
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div>
+                <div className="font-display text-base font-semibold">Ответ компании</div>
+                <div className="text-xs text-muted-foreground">
+                  {replyModalReview.authorName} · {productMap.get(replyModalReview.productId) || replyModalReview.productName || `Товар #${replyModalReview.productId}`}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReplyModalReview(null)}
+                className="w-8 h-8 rounded-lg border border-border text-muted-foreground hover:bg-muted"
+                aria-label="Закрыть модалку ответа"
+              >
+                <X size={14} className="mx-auto" />
+              </button>
+            </div>
+            <div className="text-sm text-foreground/80 whitespace-pre-wrap rounded-xl border border-border/50 bg-muted/20 p-3 mb-3">
+              {replyModalReview.text}
+            </div>
+            <textarea
+              value={replyModalValue}
+              onChange={e => setReplyModalValue(e.target.value)}
+              rows={5}
+              className="admin-input resize-none"
+              placeholder="Напишите официальный ответ компании"
+            />
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                disabled={replyBusy}
+                onClick={async () => {
+                  try {
+                    setReplyBusy(true);
+                    const nextReply = replyModalValue.trim() || null;
+                    await api.updateReview(replyModalReview.id, { companyReply: nextReply });
+                    setReviews(prev => prev.map(x => (
+                      x.id === replyModalReview.id
+                        ? { ...x, companyReply: nextReply || undefined, companyReplyAt: nextReply ? new Date().toISOString() : undefined }
+                        : x
+                    )));
+                    toast.success(nextReply ? 'Ответ сохранён' : 'Ответ удалён');
+                    setReplyModalReview(null);
+                  } catch (err) {
+                    const code = err instanceof Error ? err.message : '';
+                    if (code === '401' || code === '403') toast.error('Нет доступа. Перезайдите в админку.');
+                    else toast.error('Не удалось сохранить ответ');
+                  } finally {
+                    setReplyBusy(false);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl text-sm bg-primary text-primary-foreground disabled:opacity-50"
+              >
+                Сохранить ответ
+              </button>
+              <button
+                type="button"
+                disabled={replyBusy}
+                onClick={() => setReplyModalValue('')}
+                className="px-4 py-2 rounded-xl text-sm border border-border text-muted-foreground hover:bg-muted disabled:opacity-50"
+              >
+                Очистить
+              </button>
+              <button
+                type="button"
+                disabled={replyBusy}
+                onClick={() => setReplyModalReview(null)}
+                className="px-4 py-2 rounded-xl text-sm border border-border text-muted-foreground hover:bg-muted disabled:opacity-50"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
