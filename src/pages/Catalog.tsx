@@ -34,7 +34,7 @@ const flattenCategoryTree = (nodes: Node[]) => {
 const Catalog = () => {
   const cart = useCart();
   const revealRef = useReveal();
-  const { products, categories } = useStore();
+  const { products, categories, badges, header } = useStore();
   const navigate = useNavigate();
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [expandedPath, setExpandedPath] = useState<string[]>([]);
@@ -242,7 +242,14 @@ const Catalog = () => {
 
   return (
     <div ref={revealRef} className="min-h-screen">
-      <Header cartCount={cart.count} onCartClick={() => navigate('/cart')} />
+      <Header
+        cartCount={cart.count}
+        onCartClick={() => navigate('/cart')}
+        categoriesOverride={categories}
+        productsOverride={products}
+        badgesOverride={badges}
+        headerOverride={header}
+      />
 
       <main>
         <section className="py-10 md:py-12">

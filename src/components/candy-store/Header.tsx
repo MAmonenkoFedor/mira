@@ -2,10 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ShoppingCart, Menu, X, Search, ChevronDown, Heart, User } from 'lucide-react';
 import { useStore } from './useStore';
+import type { Badge, Category, HeaderData, Product } from './data';
 
 interface HeaderProps {
   cartCount: number;
   onCartClick: () => void;
+  categoriesOverride?: Category[];
+  productsOverride?: Product[];
+  badgesOverride?: Badge[];
+  headerOverride?: HeaderData | null;
 }
 
 const navLinks = [
@@ -19,14 +24,25 @@ const navLinks = [
   { label: 'Контакты', href: '/#footer' },
 ];
 
-export default function Header({ cartCount, onCartClick }: HeaderProps) {
+export default function Header({
+  cartCount,
+  onCartClick,
+  categoriesOverride,
+  productsOverride,
+  badgesOverride,
+  headerOverride,
+}: HeaderProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const catalogRef = useRef<HTMLDivElement>(null);
   const mobileSearchRef = useRef<HTMLInputElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
-  const { categories, products, badges, header } = useStore();
+  const store = useStore();
+  const categories = categoriesOverride ?? store.categories;
+  const products = productsOverride ?? store.products;
+  const badges = badgesOverride ?? store.badges;
+  const header = headerOverride ?? store.header;
   const headerView = header ?? {
     brandName: 'МираВкус',
     brandTextColor: '#db2777',
