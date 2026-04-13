@@ -98,8 +98,12 @@ export default function Header({ cartCount, onCartClick }: HeaderProps) {
     return withIndex
       .filter(({ c }) => (c.showOnHome ?? (!c.id.includes('/') && c.id !== 'packaging')) && productCategoryIds.has(c.id))
       .sort((a, b) => {
-        const ao = typeof a.c.homeOrder === 'number' ? a.c.homeOrder : Number.POSITIVE_INFINITY;
-        const bo = typeof b.c.homeOrder === 'number' ? b.c.homeOrder : Number.POSITIVE_INFINITY;
+        const ao = typeof a.c.categoryOrder === 'number'
+          ? a.c.categoryOrder
+          : (typeof a.c.homeOrder === 'number' ? a.c.homeOrder : Number.POSITIVE_INFINITY);
+        const bo = typeof b.c.categoryOrder === 'number'
+          ? b.c.categoryOrder
+          : (typeof b.c.homeOrder === 'number' ? b.c.homeOrder : Number.POSITIVE_INFINITY);
         if (ao !== bo) return ao - bo;
         return a.index - b.index;
       })

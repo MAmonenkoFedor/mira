@@ -157,8 +157,20 @@ const Catalog = () => {
       else roots.push(getNode(c));
     }
 
+    const sourceIndex = new Map(list.map((c, idx) => [c.id, idx]));
+    const getCategoryOrder = (c: Category) => (
+      typeof c.categoryOrder === 'number' ? c.categoryOrder : Number.POSITIVE_INFINITY
+    );
     const sort = (nodes: Node[]) => {
-      nodes.sort((a, b) => a.category.name.localeCompare(b.category.name, 'ru'));
+      nodes.sort((a, b) => {
+        const ao = getCategoryOrder(a.category);
+        const bo = getCategoryOrder(b.category);
+        if (ao !== bo) return ao - bo;
+        const ai = sourceIndex.get(a.category.id) ?? Number.POSITIVE_INFINITY;
+        const bi = sourceIndex.get(b.category.id) ?? Number.POSITIVE_INFINITY;
+        if (ai !== bi) return ai - bi;
+        return a.category.name.localeCompare(b.category.name, 'ru');
+      });
       for (const n of nodes) sort(n.children);
     };
     sort(roots);
