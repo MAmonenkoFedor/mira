@@ -6,6 +6,14 @@ function resolveBase(): string {
   return "";
 }
 const base = resolveBase();
+export const ADMIN_SESSION_EXPIRED_EVENT = "admin-session-expired";
+
+function notifyAdminSessionExpired(status: number, detail: string) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(ADMIN_SESSION_EXPIRED_EVENT, {
+    detail: { status, detail },
+  }));
+}
 
 function buildLocalPickupPoints(provider: "ozon" | "cdek" | "russianPost", city?: string) {
   const providerLabelMap = {
@@ -49,6 +57,9 @@ async function j<T>(res: Response | Promise<Response>): Promise<T> {
       }
     } catch {
       detail = "";
+    }
+    if ((r.status === 401 || r.status === 403) && getToken()) {
+      notifyAdminSessionExpired(r.status, detail);
     }
     throw new Error(detail ? `${r.status}|${detail}` : String(r.status));
   }
