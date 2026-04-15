@@ -472,12 +472,14 @@ const FooterSchema = z.object({
   })).optional().default([]),
   copyright: z.string().min(1),
 });
+const defaultHomeSectionOrder = ["categories", "products", "benefits", "reviews", "articles", "promo", "contact"] as const;
 const HeaderSchema = z.object({
   brandName: z.string().min(1),
   brandTextColor: z.string().min(1),
   menuButtonBg: z.string().min(1),
   menuButtonTextColor: z.string().min(1),
   hiddenSections: z.array(z.string().min(1)),
+  sectionOrder: z.array(z.string().min(1)).optional().default([...defaultHomeSectionOrder]),
 });
 const HeroTextSchema = z.object({
   title: z.string().min(1),
@@ -530,6 +532,7 @@ const defaultHeader = {
   menuButtonBg: "#db2777",
   menuButtonTextColor: "#ffffff",
   hiddenSections: [],
+  sectionOrder: [...defaultHomeSectionOrder],
 };
 const defaultHeroText = {
   title: "Сладкое счастье",
@@ -664,8 +667,12 @@ function requireAuth(handler: express.RequestHandler): express.RequestHandler {
       if (!admin) return res.status(401).json({ error: "unauthorized" });
       await Promise.resolve(handler(req, res, next));
       return;
-    } catch {
-      return res.status(401).json({ error: "unauthorized" });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ error: "bad_request", issues: err.issues });
+      }
+      console.error("requireAuth handler failed", err);
+      return res.status(500).json({ error: "internal_error" });
     }
   };
 }
@@ -677,8 +684,12 @@ function requireCustomerAuth(handler: express.RequestHandler): express.RequestHa
       if (!customerId) return res.status(401).json({ error: "unauthorized" });
       await Promise.resolve(handler(req, res, next));
       return;
-    } catch {
-      return res.status(401).json({ error: "unauthorized" });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ error: "bad_request", issues: err.issues });
+      }
+      console.error("requireCustomerAuth handler failed", err);
+      return res.status(500).json({ error: "internal_error" });
     }
   };
 }

@@ -121,6 +121,7 @@ export interface HeaderData {
   menuButtonBg: string;
   menuButtonTextColor: string;
   hiddenSections: string[];
+  sectionOrder: string[];
 }
 
 export interface HeroTextData {
@@ -185,6 +186,7 @@ export const headerData: HeaderData = {
   menuButtonBg: '#db2777',
   menuButtonTextColor: '#ffffff',
   hiddenSections: [],
+  sectionOrder: ['categories', 'products', 'benefits', 'reviews', 'articles', 'promo', 'contact'],
 };
 
 export const aboutData: AboutData = {

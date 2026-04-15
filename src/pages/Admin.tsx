@@ -2853,6 +2853,7 @@ function CategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
 function HomeCategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
   const [reorderBusy, setReorderBusy] = useState(false);
   const [sectionToggleBusyId, setSectionToggleBusyId] = useState<string | null>(null);
+  const [sectionReorderBusy, setSectionReorderBusy] = useState(false);
 
   const homeOrderList = useMemo(() => {
     const list = store.categories.filter(c => c.showOnHome);
@@ -2875,6 +2876,15 @@ function HomeCategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
     { id: 'promo', label: 'Промо-баннер' },
     { id: 'contact', label: 'Форма контакта' },
   ]), []);
+  const homeSectionMap = useMemo(() => new Map(homeSectionItems.map(section => [section.id, section])), [homeSectionItems]);
+  const orderedHomeSections = useMemo(() => {
+    const configured = Array.isArray(store.header?.sectionOrder) ? store.header.sectionOrder : [];
+    const configuredKnown = configured.filter(id => homeSectionMap.has(id));
+    const missing = homeSectionItems.map(section => section.id).filter(id => !configuredKnown.includes(id));
+    return [...configuredKnown, ...missing]
+      .map(id => homeSectionMap.get(id))
+      .filter((section): section is { id: string; label: string } => Boolean(section));
+  }, [homeSectionItems, homeSectionMap, store.header?.sectionOrder]);
   const hiddenSectionSet = useMemo(() => new Set(store.header?.hiddenSections || []), [store.header?.hiddenSections]);
 
   return (
@@ -2882,37 +2892,82 @@ function HomeCategoriesTab({ store }: { store: ReturnType<typeof useStore> }) {
       <div className="bg-card rounded-2xl p-4 border border-border/40 shadow-sm">
         <div className="font-display font-semibold mb-3">Секции на главной</div>
         <div className="grid gap-2">
-          {homeSectionItems.map(section => {
+          {orderedHomeSections.map((section, index) => {
             const isHidden = hiddenSectionSet.has(section.id);
             return (
               <div key={section.id} className="flex items-center justify-between rounded-xl border border-border/40 bg-muted/10 px-3 py-2">
                 <div className="text-sm font-medium">{section.label}</div>
-                <button
-                  onClick={async () => {
-                    if (sectionToggleBusyId) return;
-                    try {
-                      setSectionToggleBusyId(section.id);
-                      const next = [...hiddenSectionSet];
-                      const index = next.indexOf(section.id);
-                      if (index >= 0) next.splice(index, 1);
-                      else next.push(section.id);
-                      await store.updateHeader({ hiddenSections: next });
-                      toast.success(isHidden ? 'Секция показана на главной' : 'Секция скрыта с главной');
-                    } catch (err) {
-                      toast.error(getFriendlyActionError(err, 'Не удалось обновить видимость секции'));
-                    } finally {
-                      setSectionToggleBusyId(null);
-                    }
-                  }}
-                  disabled={Boolean(sectionToggleBusyId)}
-                  className={`px-3 py-1.5 rounded-xl text-xs border transition-colors disabled:opacity-40 ${
-                    isHidden
-                      ? 'border-border text-muted-foreground hover:bg-muted'
-                      : 'border-primary/30 text-primary hover:bg-primary/10'
-                  }`}
-                >
-                  {isHidden ? 'Скрыто' : 'Показано'}
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={async () => {
+                      if (sectionReorderBusy || index === 0) return;
+                      try {
+                        setSectionReorderBusy(true);
+                        const next = [...orderedHomeSections];
+                        [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                        await store.updateHeader({ sectionOrder: next.map(item => item.id) });
+                      } catch (err) {
+                        toast.error(getFriendlyActionError(err, 'Не удалось обновить порядок секций'));
+                      } finally {
+                        setSectionReorderBusy(false);
+                      }
+                    }}
+                    disabled={sectionReorderBusy || index === 0}
+                    title="Поднять секцию выше"
+                    aria-label="Поднять секцию выше"
+                    className="p-2 rounded-xl hover:bg-muted text-muted-foreground disabled:opacity-40"
+                  >
+                    <ArrowUp size={14} />
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (sectionReorderBusy || index === orderedHomeSections.length - 1) return;
+                      try {
+                        setSectionReorderBusy(true);
+                        const next = [...orderedHomeSections];
+                        [next[index + 1], next[index]] = [next[index], next[index + 1]];
+                        await store.updateHeader({ sectionOrder: next.map(item => item.id) });
+                      } catch (err) {
+                        toast.error(getFriendlyActionError(err, 'Не удалось обновить порядок секций'));
+                      } finally {
+                        setSectionReorderBusy(false);
+                      }
+                    }}
+                    disabled={sectionReorderBusy || index === orderedHomeSections.length - 1}
+                    title="Опустить секцию ниже"
+                    aria-label="Опустить секцию ниже"
+                    className="p-2 rounded-xl hover:bg-muted text-muted-foreground disabled:opacity-40"
+                  >
+                    <ArrowDown size={14} />
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (sectionToggleBusyId) return;
+                      try {
+                        setSectionToggleBusyId(section.id);
+                        const currentHidden = store.header?.hiddenSections || [];
+                        const next = [...currentHidden];
+                        const hiddenIndex = next.indexOf(section.id);
+                        if (hiddenIndex >= 0) next.splice(hiddenIndex, 1);
+                        else next.push(section.id);
+                        await store.updateHeader({ hiddenSections: next });
+                        toast.success(isHidden ? 'Секция показана на главной' : 'Секция скрыта с главной');
+                      } catch (err) {
+                        toast.error(getFriendlyActionError(err, 'Не удалось обновить видимость секции'));
+                      } finally {
+                        setSectionToggleBusyId(null);
+                      }
+                    }}
+                    disabled={Boolean(sectionToggleBusyId)}
+                    className={`px-3 py-1.5 rounded-xl text-xs border transition-colors disabled:opacity-40 ${
+                      isHidden
+                        ? 'border-border text-muted-foreground hover:bg-muted'
+                        : 'border-primary/30 text-primary hover:bg-primary/10'
+                    }`}
+                  >
+                    {isHidden ? 'Скрыто' : 'Показано'}
+                  </button>
+                </div>
               </div>
             );
           })}

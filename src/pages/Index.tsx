@@ -159,6 +159,16 @@ const Index = () => {
   }, [store.categories, productCategoryIds]);
   const hiddenSections = useMemo(() => new Set(store.header?.hiddenSections || []), [store.header?.hiddenSections]);
   const isSectionVisible = useCallback((sectionId: string) => !hiddenSections.has(sectionId), [hiddenSections]);
+  const defaultHomeSectionOrder = useMemo(
+    () => ['categories', 'products', 'benefits', 'reviews', 'articles', 'promo', 'contact'],
+    []
+  );
+  const homeSectionOrder = useMemo(() => {
+    const configured = Array.isArray(store.header?.sectionOrder) ? store.header.sectionOrder : [];
+    const configuredKnown = configured.filter(id => defaultHomeSectionOrder.includes(id));
+    const missing = defaultHomeSectionOrder.filter(id => !configuredKnown.includes(id));
+    return [...configuredKnown, ...missing];
+  }, [defaultHomeSectionOrder, store.header?.sectionOrder]);
 
   return (
     <div ref={revealRef} className="min-h-screen">
@@ -166,28 +176,38 @@ const Index = () => {
 
       <main>
         <Hero />
-        {isSectionVisible('categories') && (
-          <Categories
-            items={homeCategories}
-            enableHierarchy={false}
-            activeCategory={activeCategory}
-            onSelect={handleHomeCategorySelect}
-          />
-        )}
-        {isSectionVisible('products') && (
-          <Products
-            activeCategory={activeCategory}
-            onAddToCart={handleAddToCart}
-            layout="grouped"
-            groupedCategories={homeCategories}
-            applyCategoryFilter={false}
-          />
-        )}
-        {isSectionVisible('benefits') && <Benefits />}
-        {isSectionVisible('reviews') && <Reviews />}
-        {isSectionVisible('articles') && <Articles />}
-        {isSectionVisible('promo') && <PromoBanner onApplyPromo={handlePromoApply} />}
-        {isSectionVisible('contact') && <ContactForm />}
+        {homeSectionOrder.map((sectionId) => {
+          if (!isSectionVisible(sectionId)) return null;
+          if (sectionId === 'categories') {
+            return (
+              <Categories
+                key={sectionId}
+                items={homeCategories}
+                enableHierarchy={false}
+                activeCategory={activeCategory}
+                onSelect={handleHomeCategorySelect}
+              />
+            );
+          }
+          if (sectionId === 'products') {
+            return (
+              <Products
+                key={sectionId}
+                activeCategory={activeCategory}
+                onAddToCart={handleAddToCart}
+                layout="grouped"
+                groupedCategories={homeCategories}
+                applyCategoryFilter={false}
+              />
+            );
+          }
+          if (sectionId === 'benefits') return <Benefits key={sectionId} />;
+          if (sectionId === 'reviews') return <Reviews key={sectionId} />;
+          if (sectionId === 'articles') return <Articles key={sectionId} />;
+          if (sectionId === 'promo') return <PromoBanner key={sectionId} onApplyPromo={handlePromoApply} />;
+          if (sectionId === 'contact') return <ContactForm key={sectionId} />;
+          return null;
+        })}
       </main>
 
       <Footer />

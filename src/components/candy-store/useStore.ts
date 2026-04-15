@@ -82,15 +82,25 @@ const normalizeAbout = (input: unknown): AboutData => {
 
 const normalizeHeader = (input: unknown): HeaderData => {
   const data = input && typeof input === 'object' ? (input as Partial<HeaderData>) : {};
+  const defaultSectionOrder = Array.isArray(headerData.sectionOrder) ? headerData.sectionOrder : [];
+  const sectionSet = new Set(defaultSectionOrder);
   const hiddenSections = Array.isArray(data.hiddenSections)
     ? data.hiddenSections.map(v => String(v).trim()).filter(Boolean)
     : headerData.hiddenSections;
+  const rawSectionOrder = Array.isArray(data.sectionOrder)
+    ? data.sectionOrder.map(v => String(v).trim()).filter(Boolean)
+    : defaultSectionOrder;
+  const sectionOrder = [
+    ...rawSectionOrder.filter(id => sectionSet.has(id)),
+    ...defaultSectionOrder.filter(id => !rawSectionOrder.includes(id)),
+  ];
   return {
     brandName: typeof data.brandName === 'string' && data.brandName.trim() ? data.brandName.trim() : headerData.brandName,
     brandTextColor: typeof data.brandTextColor === 'string' && data.brandTextColor.trim() ? data.brandTextColor.trim() : headerData.brandTextColor,
     menuButtonBg: typeof data.menuButtonBg === 'string' && data.menuButtonBg.trim() ? data.menuButtonBg.trim() : headerData.menuButtonBg,
     menuButtonTextColor: typeof data.menuButtonTextColor === 'string' && data.menuButtonTextColor.trim() ? data.menuButtonTextColor.trim() : headerData.menuButtonTextColor,
     hiddenSections,
+    sectionOrder,
   };
 };
 
