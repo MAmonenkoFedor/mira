@@ -1817,7 +1817,17 @@ app.put("/api/hero-text", requireAuth(async (req, res) => {
   res.json({ ok: true });
 }));
 
+async function ensureFeatureBlocksSettingsTable() {
+  await pool.query(`
+    create table if not exists feature_blocks_settings(
+      id integer primary key default 1,
+      data jsonb not null
+    );
+  `);
+}
+
 app.get("/api/feature-blocks", async (_req, res) => {
+  await ensureFeatureBlocksSettingsTable();
   const { rows } = await pool.query("select data from feature_blocks_settings where id=1");
   if (!rows[0]) return res.json(defaultFeatureBlocks);
   const data = rows[0].data;
@@ -1826,10 +1836,11 @@ app.get("/api/feature-blocks", async (_req, res) => {
 });
 
 app.put("/api/feature-blocks", requireAuth(async (req, res) => {
+  await ensureFeatureBlocksSettingsTable();
   const data = FeatureBlocksSchema.parse(req.body);
   await pool.query(
     "insert into feature_blocks_settings(id,data) values(1,$1) on conflict (id) do update set data=excluded.data",
-    [data]
+    [JSON.stringify(data)]
   );
   res.json({ ok: true });
 }));
