@@ -193,6 +193,9 @@ type IntegrationConfig = {
     pass?: string;
     from?: string;
   };
+  yandexDelivery: {
+    token?: string;
+  };
   ozon: {
     apiKey?: string;
     clientId?: string;
@@ -217,6 +220,9 @@ const IntegrationStoredSchema = z.object({
     user: z.string().optional(),
     pass: z.string().optional(),
     from: z.string().optional(),
+  }).optional(),
+  yandexDelivery: z.object({
+    token: z.string().optional(),
   }).optional(),
   ozon: z.object({
     apiKey: z.string().optional(),
@@ -243,6 +249,9 @@ const IntegrationPatchSchema = z.object({
     pass: z.union([z.string(), z.number()]).optional().nullable(),
     from: z.union([z.string(), z.number()]).optional().nullable(),
   }).partial().optional(),
+  yandexDelivery: z.object({
+    token: z.union([z.string(), z.number()]).optional().nullable(),
+  }).partial().optional(),
   ozon: z.object({
     apiKey: z.union([z.string(), z.number()]).optional().nullable(),
     clientId: z.union([z.string(), z.number()]).optional().nullable(),
@@ -262,6 +271,7 @@ const IntegrationPatchSchema = z.object({
 
 const emptyIntegrationConfig: IntegrationConfig = {
   smtp: {},
+  yandexDelivery: {},
   ozon: {},
   cdek: {},
   russianPost: {},
@@ -287,6 +297,9 @@ function normalizeIntegrationConfig(input: unknown): IntegrationConfig {
       pass: cleanOptionalString(src.smtp?.pass),
       from: cleanOptionalString(src.smtp?.from),
     },
+    yandexDelivery: {
+      token: cleanOptionalString(src.yandexDelivery?.token),
+    },
     ozon: {
       apiKey: cleanOptionalString(src.ozon?.apiKey),
       clientId: cleanOptionalString(src.ozon?.clientId),
@@ -306,11 +319,19 @@ function normalizeIntegrationConfig(input: unknown): IntegrationConfig {
 }
 
 function mergeIntegrationConfig(base: IntegrationConfig, patch: IntegrationConfig): IntegrationConfig {
+  const mergeGroup = <T extends Record<string, any>>(baseGroup: T, patchGroup: T): T => {
+    const next = { ...baseGroup } as any;
+    for (const [key, value] of Object.entries(patchGroup || {})) {
+      if (value !== undefined) next[key] = value;
+    }
+    return next as T;
+  };
   return {
-    smtp: { ...base.smtp, ...patch.smtp },
-    ozon: { ...base.ozon, ...patch.ozon },
-    cdek: { ...base.cdek, ...patch.cdek },
-    russianPost: { ...base.russianPost, ...patch.russianPost },
+    smtp: mergeGroup(base.smtp, patch.smtp),
+    yandexDelivery: mergeGroup(base.yandexDelivery, patch.yandexDelivery),
+    ozon: mergeGroup(base.ozon, patch.ozon),
+    cdek: mergeGroup(base.cdek, patch.cdek),
+    russianPost: mergeGroup(base.russianPost, patch.russianPost),
   };
 }
 
@@ -354,6 +375,9 @@ async function getResolvedIntegrationConfig() {
       user: firstNonEmpty(stored.smtp.user, process.env.SMTP_USER, process.env.MAIL_LOGIN),
       pass: firstNonEmpty(stored.smtp.pass, process.env.SMTP_PASS, process.env.MAIL_PASSWORD),
       from: firstNonEmpty(stored.smtp.from, process.env.SMTP_FROM, process.env.MAIL_FROM),
+    },
+    yandexDelivery: {
+      token: firstNonEmpty(stored.yandexDelivery.token, process.env.YANDEX_DELIVERY_TOKEN),
     },
     ozon: {
       apiKey: firstNonEmpty(stored.ozon.apiKey, process.env.OZON_LOGISTICS_API_KEY),
@@ -717,7 +741,7 @@ const TestMailSchema = z.object({
 });
 
 const IntegrationTestSchema = z.object({
-  provider: z.enum(["smtp", "ozon", "cdek", "russianPost", "pickup"]),
+  provider: z.enum(["smtp", "yandexDelivery", "ozon", "cdek", "russianPost", "pickup"]),
   mode: z.enum(["fake", "real"]).optional(),
   to: z.string().email().optional(),
   city: z.string().min(2).max(120).optional(),
@@ -737,6 +761,9 @@ function toIntegrationPatch(input: z.infer<typeof IntegrationPatchSchema>): Inte
       user: cleanOptionalString(input.smtp?.user),
       pass: cleanOptionalString(input.smtp?.pass),
       from: cleanOptionalString(input.smtp?.from),
+    },
+    yandexDelivery: {
+      token: cleanOptionalString(input.yandexDelivery?.token),
     },
     ozon: {
       apiKey: cleanOptionalString(input.ozon?.apiKey),
@@ -758,13 +785,15 @@ function toIntegrationPatch(input: z.infer<typeof IntegrationPatchSchema>): Inte
 
 function buildIntegrationStatus(config: Awaited<ReturnType<typeof getResolvedIntegrationConfig>>) {
   return {
+    yandexDelivery: providerStatus({
+      YANDEX_DELIVERY_TOKEN: config.yandexDelivery.token,
+    }),
     ozon: providerStatus(
       {
         OZON_LOGISTICS_API_KEY: config.ozon.apiKey,
-      },
-      {
         OZON_LOGISTICS_CLIENT_ID: config.ozon.clientId,
-      }
+      },
+      {}
     ),
     cdek: providerStatus({
       CDEK_CLIENT_ID: config.cdek.clientId,
@@ -844,6 +873,48 @@ function asNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function ozonBaseUrl() {
+  return (process.env.OZON_API_BASE || "https://api-seller.ozon.ru").replace(/\/+$/, "");
+}
+
+async function fetchOzonWarehouses(clientId: string, apiKey: string) {
+  const url = `${ozonBaseUrl()}/v1/warehouse/list`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Client-Id": clientId,
+      "Api-Key": apiKey,
+    },
+    body: "{}",
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`ozon_api_failed:${response.status}:${text.slice(0, 200)}`);
+  }
+  const data = await response.json() as any;
+  const items = Array.isArray(data?.result) ? data.result : [];
+  return items as any[];
+}
+
+function normalizeOzonWarehousesAsPickupPoints(items: any[]) {
+  const result: Array<{ id: string; provider: "ozon"; name: string; address: string }> = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    const id = asString(item?.warehouse_id || item?.id);
+    if (!id || seen.has(id)) continue;
+    const name = asString(item?.name) || "Ozon";
+    result.push({
+      id,
+      provider: "ozon",
+      name,
+      address: name,
+    });
+    seen.add(id);
+  }
+  return result;
+}
+
 function cdekBaseUrl() {
   return (process.env.CDEK_API_BASE || "https://api.cdek.ru/v2").replace(/\/+$/, "");
 }
@@ -921,6 +992,30 @@ async function fetchCdekPickupPoints(city: string, clientId: string, clientSecre
   return [];
 }
 
+function yandexDeliveryBaseUrl() {
+  return (process.env.YANDEX_DELIVERY_API_BASE || "https://b2b.delivery.yango.tech/b2b/cargo/integration/v2").replace(/\/+$/, "");
+}
+
+async function yandexDeliveryAuthCheck(token: string) {
+  const url = `${yandexDeliveryBaseUrl()}/claims/search`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ limit: 1 }),
+  });
+  if (response.status === 401 || response.status === 403) {
+    throw new Error(`yandex_delivery_unauthorized:${response.status}`);
+  }
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`yandex_delivery_api_failed:${response.status}:${text.slice(0, 200)}`);
+  }
+  return true;
+}
+
 app.get("/api/logistics/status", requireAuth(async (_req, res) => {
   const resolved = await getResolvedIntegrationConfig();
   const stored = await getIntegrationConfig();
@@ -931,6 +1026,7 @@ app.get("/api/logistics/status", requireAuth(async (_req, res) => {
     status,
     settings: stored,
     secretsPreview: {
+      yandexDeliveryToken: maskSecret(resolved.yandexDelivery.token),
       ozonApiKey: maskSecret(resolved.ozon.apiKey),
       cdekClientId: maskSecret(resolved.cdek.clientId),
       cdekClientSecret: maskSecret(resolved.cdek.clientSecret),
@@ -998,6 +1094,24 @@ app.post("/api/integrations/test", rateLimitMiddleware(20, 15 * 60 * 1000), requ
       await sendMail(to, "Тест SMTP из админки", "SMTP готов к отправке писем.");
       return res.json({ ok: true, provider: "smtp", mode, to });
     }
+    if (data.provider === "yandexDelivery") {
+      if (mode === "fake") {
+        return res.json({ ok: true, provider: "yandexDelivery", mode, ready: status.yandexDelivery.ready, missing: status.yandexDelivery.missing });
+      }
+      if (!status.yandexDelivery.ready) {
+        return res.status(400).json({ error: "missing_credentials", missing: status.yandexDelivery.missing, provider: data.provider });
+      }
+      try {
+        await yandexDeliveryAuthCheck(resolved.yandexDelivery.token!);
+        return res.json({ ok: true, provider: "yandexDelivery", mode, source: "real" });
+      } catch (err) {
+        return res.status(502).json({
+          error: "yandex_delivery_api_failed",
+          provider: data.provider,
+          detail: err instanceof Error ? err.message : "unknown_error",
+        });
+      }
+    }
     if (data.provider === "pickup") {
       const city = data.city || "Москва";
       const provider: "ozon" | "cdek" | "russianPost" = "ozon";
@@ -1014,6 +1128,26 @@ app.post("/api/integrations/test", rateLimitMiddleware(20, 15 * 60 * 1000), requ
     const ready = providerStatusValue.ready;
     if (mode === "real" && !ready) {
       return res.status(400).json({ error: "missing_credentials", missing: providerStatusValue.missing, provider: data.provider });
+    }
+    if (data.provider === "ozon" && mode === "real") {
+      try {
+        const warehouses = await fetchOzonWarehouses(resolved.ozon.clientId!, resolved.ozon.apiKey!);
+        return res.json({
+          ok: true,
+          provider: data.provider,
+          mode,
+          ready,
+          missing: providerStatusValue.missing,
+          warehousesCount: warehouses.length,
+          source: "real",
+        });
+      } catch (err) {
+        return res.status(502).json({
+          error: "ozon_api_failed",
+          provider: data.provider,
+          detail: err instanceof Error ? err.message : "unknown_error",
+        });
+      }
     }
     if (data.provider === "cdek" && mode === "real") {
       try {
@@ -1059,6 +1193,24 @@ app.get("/api/logistics/pickup-points", async (req, res) => {
     const providerStatusValue = provider === "russianPost" ? status.russianPost : provider === "cdek" ? status.cdek : status.ozon;
     if (mode === "real" && !providerStatusValue.ready) {
       return res.status(400).json({ error: "missing_credentials", missing: providerStatusValue.missing, provider });
+    }
+    if (mode === "real" && provider === "ozon") {
+      try {
+        const warehouses = await fetchOzonWarehouses(resolved.ozon.clientId!, resolved.ozon.apiKey!);
+        return res.json({
+          ok: true,
+          provider,
+          mode,
+          source: "real",
+          points: normalizeOzonWarehousesAsPickupPoints(warehouses),
+        });
+      } catch (err) {
+        return res.status(502).json({
+          error: "ozon_api_failed",
+          provider,
+          detail: err instanceof Error ? err.message : "unknown_error",
+        });
+      }
     }
     if (mode === "real" && provider === "cdek") {
       try {

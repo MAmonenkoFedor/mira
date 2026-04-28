@@ -92,6 +92,7 @@ vi.mock('sonner', () => ({
 }));
 
 vi.mock('@/lib/api', () => ({
+  ADMIN_SESSION_EXPIRED_EVENT: 'admin-session-expired',
   api: {
     changePassword: vi.fn().mockResolvedValue(undefined),
   },

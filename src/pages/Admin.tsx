@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, Package, FileText, Tag, Gift, Upload, X, Percent, Image as ImageIcon, ArrowUp, ArrowDown, BadgeCheck, ClipboardList, Star, Heart, Menu, KeyRound } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, RotateCcw, Package, FileText, Tag, Gift, Upload, X, Percent, Image as ImageIcon, ArrowUp, ArrowDown, BadgeCheck, ClipboardList, Star, Heart, Menu, KeyRound, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useStore, type Article, type Order } from '@/components/candy-store/useStore';
 import { ADMIN_SESSION_EXPIRED_EVENT, api, resolveMediaUrl } from '@/lib/api';
@@ -4927,6 +4927,7 @@ function IntegrationsTab() {
   const [testing, setTesting] = useState(false);
   const [settings, setSettings] = useState({
     smtp: { host: '', port: '587', user: '', pass: '', from: '' },
+    yandexDelivery: { token: '' },
     ozon: { apiKey: '', clientId: '' },
     cdek: { clientId: '', clientSecret: '', fromPostalCode: '' },
     russianPost: { apiKey: '', login: '', password: '', fromPostalCode: '' },
@@ -4940,29 +4941,33 @@ function IntegrationsTab() {
         api.getIntegrationSettings() as Promise<any>,
         api.getLogisticsStatus() as Promise<any>,
       ]);
+      const stored = settingsRes?.settings || {};
       const resolved = settingsRes?.resolved || {};
       setSettings({
         smtp: {
-          host: resolved?.smtp?.host || '',
-          port: resolved?.smtp?.port || '587',
-          user: resolved?.smtp?.user || '',
-          pass: resolved?.smtp?.pass || '',
-          from: resolved?.smtp?.from || '',
+          host: stored?.smtp?.host || resolved?.smtp?.host || '',
+          port: stored?.smtp?.port || resolved?.smtp?.port || '587',
+          user: stored?.smtp?.user || resolved?.smtp?.user || '',
+          pass: '',
+          from: stored?.smtp?.from || resolved?.smtp?.from || '',
+        },
+        yandexDelivery: {
+          token: '',
         },
         ozon: {
-          apiKey: resolved?.ozon?.apiKey || '',
-          clientId: resolved?.ozon?.clientId || '',
+          apiKey: '',
+          clientId: stored?.ozon?.clientId || resolved?.ozon?.clientId || '',
         },
         cdek: {
-          clientId: resolved?.cdek?.clientId || '',
-          clientSecret: resolved?.cdek?.clientSecret || '',
-          fromPostalCode: resolved?.cdek?.fromPostalCode || '',
+          clientId: stored?.cdek?.clientId || resolved?.cdek?.clientId || '',
+          clientSecret: '',
+          fromPostalCode: stored?.cdek?.fromPostalCode || resolved?.cdek?.fromPostalCode || '',
         },
         russianPost: {
-          apiKey: resolved?.russianPost?.apiKey || '',
-          login: resolved?.russianPost?.login || '',
-          password: resolved?.russianPost?.password || '',
-          fromPostalCode: resolved?.russianPost?.fromPostalCode || '',
+          apiKey: '',
+          login: stored?.russianPost?.login || resolved?.russianPost?.login || '',
+          password: '',
+          fromPostalCode: stored?.russianPost?.fromPostalCode || resolved?.russianPost?.fromPostalCode || '',
         },
       });
       setStatusData(statusRes);
@@ -4977,16 +4982,60 @@ function IntegrationsTab() {
     void fetchData();
   }, [fetchData]);
 
-  const setField = (group: 'smtp' | 'ozon' | 'cdek' | 'russianPost', field: string, value: string) => {
+  const setField = (group: 'smtp' | 'yandexDelivery' | 'ozon' | 'cdek' | 'russianPost', field: string, value: string) => {
     setSettings(prev => ({ ...prev, [group]: { ...(prev as any)[group], [field]: value } } as any));
   };
 
   const saveSettings = async () => {
     setSaving(true);
     try {
-      await api.updateIntegrationSettings(settings);
+      const patch: any = {};
+      const smtp: any = {};
+      if (settings.smtp.host.trim()) smtp.host = settings.smtp.host.trim();
+      if (settings.smtp.port.trim()) smtp.port = settings.smtp.port.trim();
+      if (settings.smtp.user.trim()) smtp.user = settings.smtp.user.trim();
+      if (settings.smtp.pass.trim()) smtp.pass = settings.smtp.pass.trim();
+      if (settings.smtp.from.trim()) smtp.from = settings.smtp.from.trim();
+      if (Object.keys(smtp).length) patch.smtp = smtp;
+
+      const yandexDelivery: any = {};
+      if (settings.yandexDelivery.token.trim()) yandexDelivery.token = settings.yandexDelivery.token.trim();
+      if (Object.keys(yandexDelivery).length) patch.yandexDelivery = yandexDelivery;
+
+      const ozon: any = {};
+      if (settings.ozon.apiKey.trim()) ozon.apiKey = settings.ozon.apiKey.trim();
+      if (settings.ozon.clientId.trim()) ozon.clientId = settings.ozon.clientId.trim();
+      if (Object.keys(ozon).length) patch.ozon = ozon;
+
+      const cdek: any = {};
+      if (settings.cdek.clientId.trim()) cdek.clientId = settings.cdek.clientId.trim();
+      if (settings.cdek.clientSecret.trim()) cdek.clientSecret = settings.cdek.clientSecret.trim();
+      if (settings.cdek.fromPostalCode.trim()) cdek.fromPostalCode = settings.cdek.fromPostalCode.trim();
+      if (Object.keys(cdek).length) patch.cdek = cdek;
+
+      const russianPost: any = {};
+      if (settings.russianPost.apiKey.trim()) russianPost.apiKey = settings.russianPost.apiKey.trim();
+      if (settings.russianPost.login.trim()) russianPost.login = settings.russianPost.login.trim();
+      if (settings.russianPost.password.trim()) russianPost.password = settings.russianPost.password.trim();
+      if (settings.russianPost.fromPostalCode.trim()) russianPost.fromPostalCode = settings.russianPost.fromPostalCode.trim();
+      if (Object.keys(russianPost).length) patch.russianPost = russianPost;
+
+      if (!Object.keys(patch).length) {
+        toast.success('Нечего сохранять');
+        return;
+      }
+
+      await api.updateIntegrationSettings(patch);
       const statusRes = await api.getLogisticsStatus();
       setStatusData(statusRes);
+      setSettings(prev => ({
+        ...prev,
+        smtp: { ...prev.smtp, pass: '' },
+        yandexDelivery: { token: '' },
+        ozon: { ...prev.ozon, apiKey: '' },
+        cdek: { ...prev.cdek, clientSecret: '' },
+        russianPost: { ...prev.russianPost, apiKey: '', password: '' },
+      }));
       toast.success('Настройки интеграций сохранены');
     } catch (err) {
       toast.error(getFriendlyActionError(err, 'Не удалось сохранить настройки'));
@@ -4995,7 +5044,7 @@ function IntegrationsTab() {
     }
   };
 
-  const runTest = async (provider: 'smtp' | 'ozon' | 'cdek' | 'russianPost', mode: 'fake' | 'real') => {
+  const runTest = async (provider: 'smtp' | 'yandexDelivery' | 'ozon' | 'cdek' | 'russianPost', mode: 'fake' | 'real') => {
     setTesting(true);
     try {
       const payload: any = { provider, mode };
@@ -5043,17 +5092,35 @@ function IntegrationsTab() {
 
   return (
     <div className="grid gap-4">
+      <div className="rounded-2xl border-2 border-red-500/60 bg-red-50 p-5 text-red-950 shadow-sm">
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5">
+            <AlertTriangle size={20} />
+          </div>
+          <div className="grid gap-2">
+            <div className="font-display text-base font-semibold leading-tight">
+              Внимание: секретные ключи и токены
+            </div>
+            <div className="text-sm leading-snug text-red-900/90">
+              Не отправляйте ключи в чат/почту/мессенджеры. Если ключ уже где-то “засветился” — перевыпустите его у провайдера.
+            </div>
+            <div className="text-sm leading-snug text-red-900/90">
+              Здесь ключи сохраняются в БД. Пустые поля при сохранении ничего не стирают — чтобы заменить ключ, вставьте новый и нажмите «Сохранить интеграции».
+            </div>
+          </div>
+        </div>
+      </div>
       <div className="bg-card rounded-2xl p-5 border border-border/40 shadow-sm grid gap-4">
         <div className="flex items-center justify-between gap-3">
           <h3 className="font-display text-lg font-semibold">SMTP (письма)</h3>
           {statusMark(statusData?.status?.smtp?.ready)}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <input value={settings.smtp.host} onChange={e => setField('smtp', 'host', e.target.value)} className="admin-input" placeholder="SMTP host" />
-          <input value={settings.smtp.port} onChange={e => setField('smtp', 'port', e.target.value)} className="admin-input" placeholder="SMTP port" />
-          <input value={settings.smtp.user} onChange={e => setField('smtp', 'user', e.target.value)} className="admin-input" placeholder="SMTP user/login" />
-          <input value={settings.smtp.pass} onChange={e => setField('smtp', 'pass', e.target.value)} className="admin-input" placeholder="SMTP password" />
-          <input value={settings.smtp.from} onChange={e => setField('smtp', 'from', e.target.value)} className="admin-input sm:col-span-2" placeholder="SMTP from (email отправителя)" />
+          <input value={settings.smtp.host} onChange={e => setField('smtp', 'host', e.target.value)} className="admin-input" placeholder={`SMTP host${statusData?.secretsPreview?.smtpHost ? ` (${statusData.secretsPreview.smtpHost})` : ''}`} />
+          <input value={settings.smtp.port} onChange={e => setField('smtp', 'port', e.target.value)} className="admin-input" placeholder={`SMTP port${statusData?.secretsPreview?.smtpPort ? ` (${statusData.secretsPreview.smtpPort})` : ''}`} />
+          <input value={settings.smtp.user} onChange={e => setField('smtp', 'user', e.target.value)} className="admin-input" placeholder={`SMTP user/login${statusData?.secretsPreview?.smtpUser ? ` (${statusData.secretsPreview.smtpUser})` : ''}`} />
+          <input value={settings.smtp.pass} onChange={e => setField('smtp', 'pass', e.target.value)} className="admin-input" placeholder={`SMTP password${statusData?.secretsPreview?.smtpPass ? ` (${statusData.secretsPreview.smtpPass})` : ''}`} />
+          <input value={settings.smtp.from} onChange={e => setField('smtp', 'from', e.target.value)} className="admin-input sm:col-span-2" placeholder={`SMTP from (email отправителя)${statusData?.secretsPreview?.smtpFrom ? ` (${statusData.secretsPreview.smtpFrom})` : ''}`} />
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => runTest('smtp', 'fake')} disabled={testing} className="px-3 py-2 rounded-xl border border-border text-xs hover:bg-muted transition-colors">Тест SMTP (fake)</button>
@@ -5063,12 +5130,26 @@ function IntegrationsTab() {
 
       <div className="bg-card rounded-2xl p-5 border border-border/40 shadow-sm grid gap-4">
         <div className="flex items-center justify-between gap-3">
+          <h3 className="font-display text-lg font-semibold">Яндекс Доставка</h3>
+          {statusMark(statusData?.status?.yandexDelivery?.ready)}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <input value={settings.yandexDelivery.token} onChange={e => setField('yandexDelivery', 'token', e.target.value)} className="admin-input sm:col-span-2" placeholder={`OAuth token${statusData?.secretsPreview?.yandexDeliveryToken ? ` (${statusData.secretsPreview.yandexDeliveryToken})` : ''}`} />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => runTest('yandexDelivery', 'fake')} disabled={testing} className="px-3 py-2 rounded-xl border border-border text-xs hover:bg-muted transition-colors">Тест Яндекс (fake)</button>
+          <button type="button" onClick={() => runTest('yandexDelivery', 'real')} disabled={testing} className="px-3 py-2 rounded-xl border border-border text-xs hover:bg-muted transition-colors">Тест Яндекс (real)</button>
+        </div>
+      </div>
+
+      <div className="bg-card rounded-2xl p-5 border border-border/40 shadow-sm grid gap-4">
+        <div className="flex items-center justify-between gap-3">
           <h3 className="font-display text-lg font-semibold">Ozon</h3>
           {statusMark(statusData?.status?.ozon?.ready)}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <input value={settings.ozon.apiKey} onChange={e => setField('ozon', 'apiKey', e.target.value)} className="admin-input" placeholder="Ozon API key" />
-          <input value={settings.ozon.clientId} onChange={e => setField('ozon', 'clientId', e.target.value)} className="admin-input" placeholder="Ozon client id (опционально)" />
+          <input value={settings.ozon.apiKey} onChange={e => setField('ozon', 'apiKey', e.target.value)} className="admin-input" placeholder={`Ozon API key${statusData?.secretsPreview?.ozonApiKey ? ` (${statusData.secretsPreview.ozonApiKey})` : ''}`} />
+          <input value={settings.ozon.clientId} onChange={e => setField('ozon', 'clientId', e.target.value)} className="admin-input" placeholder="Ozon client id" />
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => runTest('ozon', 'fake')} disabled={testing} className="px-3 py-2 rounded-xl border border-border text-xs hover:bg-muted transition-colors">Тест Ozon (fake)</button>
@@ -5085,7 +5166,7 @@ function IntegrationsTab() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <input value={settings.cdek.clientId} onChange={e => setField('cdek', 'clientId', e.target.value)} className="admin-input" placeholder="CDEK client id" />
-          <input value={settings.cdek.clientSecret} onChange={e => setField('cdek', 'clientSecret', e.target.value)} className="admin-input" placeholder="CDEK client secret" />
+          <input value={settings.cdek.clientSecret} onChange={e => setField('cdek', 'clientSecret', e.target.value)} className="admin-input" placeholder={`CDEK client secret${statusData?.secretsPreview?.cdekClientSecret ? ` (${statusData.secretsPreview.cdekClientSecret})` : ''}`} />
           <input value={settings.cdek.fromPostalCode} onChange={e => setField('cdek', 'fromPostalCode', e.target.value)} className="admin-input sm:col-span-2" placeholder="CDEK индекс отправки" />
         </div>
         <div className="flex flex-wrap gap-2">
@@ -5100,9 +5181,9 @@ function IntegrationsTab() {
           {statusMark(statusData?.status?.russianPost?.ready)}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <input value={settings.russianPost.apiKey} onChange={e => setField('russianPost', 'apiKey', e.target.value)} className="admin-input" placeholder="Почта API key" />
+          <input value={settings.russianPost.apiKey} onChange={e => setField('russianPost', 'apiKey', e.target.value)} className="admin-input" placeholder={`Почта API key${statusData?.secretsPreview?.russianPostApiKey ? ` (${statusData.secretsPreview.russianPostApiKey})` : ''}`} />
           <input value={settings.russianPost.login} onChange={e => setField('russianPost', 'login', e.target.value)} className="admin-input" placeholder="Почта login" />
-          <input value={settings.russianPost.password} onChange={e => setField('russianPost', 'password', e.target.value)} className="admin-input" placeholder="Почта password" />
+          <input value={settings.russianPost.password} onChange={e => setField('russianPost', 'password', e.target.value)} className="admin-input" placeholder={`Почта password${statusData?.secretsPreview?.russianPostPassword ? ` (${statusData.secretsPreview.russianPostPassword})` : ''}`} />
           <input value={settings.russianPost.fromPostalCode} onChange={e => setField('russianPost', 'fromPostalCode', e.target.value)} className="admin-input" placeholder="Почта индекс отправки" />
         </div>
         <div className="flex flex-wrap gap-2">

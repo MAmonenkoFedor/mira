@@ -18,6 +18,9 @@ dist-ssr
 server/uploads/
 server/uploads
 
+# Trae sandbox helper directory (should not be committed)
+__gitpush/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
