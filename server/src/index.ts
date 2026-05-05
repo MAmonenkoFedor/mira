@@ -106,29 +106,41 @@ async function resolveAdminSession(payload: any): Promise<AdminSession | null> {
 async function resolveAdminSessionFromRequest(req: express.Request): Promise<AdminSession | null> {
   const token = getBearerToken(req);
   if (!token) return null;
-  const payload = await verifyToken(token);
-  return resolveAdminSession(payload);
+  try {
+    const payload = await verifyToken(token);
+    return resolveAdminSession(payload);
+  } catch {
+    return null;
+  }
 }
 
 async function resolveCustomerIdFromRequest(req: express.Request): Promise<number | null> {
   const token = getBearerToken(req);
   if (!token) return null;
-  const payload = await verifyToken(token);
-  if (payload.role !== "customer") return null;
-  const id = Number(payload.sub);
-  if (!Number.isFinite(id) || id <= 0) return null;
-  return id;
+  try {
+    const payload = await verifyToken(token);
+    if (payload.role !== "customer") return null;
+    const id = Number(payload.sub);
+    if (!Number.isFinite(id) || id <= 0) return null;
+    return id;
+  } catch {
+    return null;
+  }
 }
 
 async function resolveCustomerContactFromRequest(req: express.Request): Promise<{ phone: string | null; email: string | null } | null> {
   const token = getBearerToken(req);
   if (!token) return null;
-  const payload = await verifyToken(token);
-  if (payload.role !== "customer") return null;
-  return {
-    phone: payload.phone ? String(payload.phone) : null,
-    email: payload.email ? String(payload.email) : null,
-  };
+  try {
+    const payload = await verifyToken(token);
+    if (payload.role !== "customer") return null;
+    return {
+      phone: payload.phone ? String(payload.phone) : null,
+      email: payload.email ? String(payload.email) : null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function mapOrderRow(r: any) {
