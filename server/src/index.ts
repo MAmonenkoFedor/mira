@@ -420,6 +420,9 @@ async function sendMail(to: string, subject: string, text: string, html?: string
     const transporter = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
     await transporter.sendMail({ from, to, subject, text, html });
   } else {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("smtp_not_configured");
+    }
     console.log(`password reset link for ${to}: ${text}`);
   }
 }
@@ -436,6 +439,9 @@ async function sendSms(to: string, text: string) {
       });
     } catch {}
   } else {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("sms_not_configured");
+    }
     console.log(`sms to ${to}: ${text}`);
   }
 }
@@ -2597,6 +2603,20 @@ async function start() {
   const seedOnBoot = process.env.SEED_ON_BOOT
     ? String(process.env.SEED_ON_BOOT).toLowerCase() === "true"
     : process.env.NODE_ENV !== "production";
+  if (process.env.NODE_ENV === "production") {
+    const jwtSecretValue = String(process.env.JWT_SECRET || "").trim();
+    const adminPasswordValue = String(process.env.ADMIN_PASSWORD || "").trim();
+    const databaseUrlValue = String(process.env.DATABASE_URL || "").trim();
+    if (!databaseUrlValue) {
+      throw new Error("missing_DATABASE_URL");
+    }
+    if (!jwtSecretValue || jwtSecretValue === "dev_secret") {
+      throw new Error("missing_JWT_SECRET");
+    }
+    if (!adminPasswordValue || adminPasswordValue === "changeme") {
+      throw new Error("missing_ADMIN_PASSWORD");
+    }
+  }
   await runBootStep("migrate", async () => {
     await migrate(pool);
   });

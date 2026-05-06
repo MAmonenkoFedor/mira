@@ -1,14 +1,13 @@
-version: "3.9"
 services:
   db:
     image: postgres:16
     container_name: miravkus_db
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-miravkus}
     volumes:
       - db_data:/var/lib/postgresql/data
@@ -26,9 +25,9 @@ services:
     environment:
       DATABASE_URL: postgres://postgres:postgres@db:5432/miravkus
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8081}
-      JWT_SECRET: ${JWT_SECRET:-dev_secret}
+      JWT_SECRET: ${JWT_SECRET:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       YANDEX_DELIVERY_TOKEN: ${YANDEX_DELIVERY_TOKEN:-}
       YANDEX_DELIVERY_API_BASE: ${YANDEX_DELIVERY_API_BASE:-}
       OZON_LOGISTICS_API_KEY: ${OZON_LOGISTICS_API_KEY:-}
